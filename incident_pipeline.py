@@ -306,15 +306,16 @@ class IncidentPipeline:
         # Create the remediation action record
         action = RemediationAction(
             incident_id=incident.id,
-            action_type=action_type,
             command=command,
             status=RemediationStatus.PENDING,
+            risk_level=risk_level,
+            explanation=explanation,
         )
 
         # Check auto-approve (skip for manual clicks)
         if not manual_approval and not settings.auto_remediate and risk_level != "low":
             action.status = RemediationStatus.SKIPPED
-            action.result = f"Requires manual approval (risk: {risk_level}). Click 'Trigger Remediation' to execute."
+            action.output = f"Requires manual approval (risk: {risk_level}). Click 'Trigger Remediation' to execute."
             db.add(action)
             db.commit()
             logger.info(f"  ⏸️ Remediation skipped (manual approval required, risk={risk_level})")
@@ -327,13 +328,19 @@ class IncidentPipeline:
         db.commit()
 
         try:
-            result = await self.mcp.execute_remediation_command(command)
-            action.result = result
+            # ─── Execute Command ───
+            # Ensure the command uses the fully qualified MCP tool notation
+            # since Kubernetes tool doesn't support interactive CLI commands directly
+            # This is a bit of a hack since the LLM gives raw kubectl commands
+            tool_output = await self.mcp.call_tool("kubectl", {"command": command})
+            
             action.status = RemediationStatus.SUCCESS
-            logger.info(f"  ✅ Remediation executed: {command}")
+            action.output = str(tool_output)
+            logger.info(f"  ✅ Remediation successful: {tool_output[:200]}...")
+            
         except Exception as e:
-            action.result = str(e)
             action.status = RemediationStatus.FAILED
+            action.output = f"Execution failed: {str(e)}"
             logger.error(f"  ❌ Remediation failed: {e}")
 
         db.commit()

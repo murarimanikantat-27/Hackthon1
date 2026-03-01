@@ -47,13 +47,13 @@ class Incident(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String(500), nullable=False)
-    severity = Column(Enum(Severity), default=Severity.MEDIUM)
+    severity = Column(Enum(Severity, schema="avatar"), default=Severity.MEDIUM)
     namespace = Column(String(255), default="default")
     resource_type = Column(String(100))  # pod, deployment, node, etc.
     resource_name = Column(String(500))
     description = Column(Text)
     raw_data = Column(JSON)  # raw cluster data from MCP
-    status = Column(Enum(IncidentStatus), default=IncidentStatus.DETECTED)
+    status = Column(Enum(IncidentStatus, schema="avatar"), default=IncidentStatus.DETECTED)
     source = Column(String(50), default="mcp-poll")  # "mcp-poll" or "alertmanager"
     alert_fingerprint = Column(String(255), nullable=True, index=True)  # AlertManager dedup key
     detected_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -92,13 +92,13 @@ class RemediationAction(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     incident_id = Column(Integer, ForeignKey("incidents.id"), nullable=False)
-    action_type = Column(String(100))  # restart_pod, rollout_restart, scale, etc.
-    command = Column(Text)  # the actual kubectl command or MCP tool call
-    result = Column(Text)  # output from the command
-    status = Column(Enum(RemediationStatus), default=RemediationStatus.PENDING)
+    command = Column(Text, nullable=False)
+    risk_level = Column(String(50), default="medium")
+    explanation = Column(Text)
+    status = Column(Enum(RemediationStatus, schema="avatar"), default=RemediationStatus.PENDING)
     executed_at = Column(DateTime, nullable=True)
+    output = Column(Text)  # raw command output or error message
 
-    # Relationships
     incident = relationship("Incident", back_populates="remediation_actions")
 
     def __repr__(self):

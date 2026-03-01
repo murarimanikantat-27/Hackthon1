@@ -82,9 +82,9 @@ class RCADetail(BaseModel):
 
 class RemediationDetail(BaseModel):
     id: int
-    action_type: Optional[str]
     command: Optional[str]
-    result: Optional[str]
+    output: Optional[str]
+    risk_level: Optional[str]
     status: str
     executed_at: Optional[datetime]
 
@@ -270,10 +270,10 @@ def get_incident(incident_id: int, db: Session = Depends(get_db)):
             remediation_actions=[
                 RemediationDetail(
                     id=a.id,
-                    action_type=a.action_type,
                     command=a.command,
-                    result=a.result,
-                    status=a.status.value if a.status else "pending",
+                    output=a.output,
+                    risk_level=a.risk_level,
+                    status=a.status.value if a.status else "unknown",
                     executed_at=a.executed_at,
                 )
                 for a in incident.remediation_actions
@@ -512,9 +512,9 @@ async def trigger_remediation(incident_id: int, db: Session = Depends(get_db)):
             "status": "success" if action else "no_action",
             "action": {
                 "id": action.id,
-                "type": action.action_type,
                 "command": action.command,
-                "result": action.result,
+                "output": action.output,
+                "risk_level": action.risk_level,
                 "status": action.status.value,
             } if action else None,
         }

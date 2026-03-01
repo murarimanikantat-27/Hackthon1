@@ -1122,11 +1122,11 @@
                 html += actions.map(a => `
                     <div class="action-item">
                         <div class="action-header">
-                            <span class="action-type">${escapeHtml(a.action_type || 'Unknown')}</span>
+                            <span class="action-type">Risk: ${escapeHtml(a.risk_level || 'Unknown')}</span>
                             <span class="status-tag status-${a.status === 'success' ? 'resolved' : a.status === 'failed' ? 'failed' : 'analyzing'}">${a.status}</span>
                         </div>
                         ${a.command ? `<div class="action-command">$ ${escapeHtml(a.command)}</div>` : ''}
-                        ${a.result ? `<p style="font-size:12px;color:var(--text-muted);margin-top:6px">${escapeHtml(a.result)}</p>` : ''}
+                        ${a.output ? `<p style="font-size:12px;color:var(--text-muted);margin-top:6px;white-space:pre-wrap;">${escapeHtml(a.output)}</p>` : ''}
                     </div>`).join('');
             } else {
                 html += '<p style="color:var(--text-muted);font-size:13px">No remediation actions taken yet.</p>';

@@ -11,8 +11,12 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 from config import settings
 
+from sqlalchemy import MetaData
 logger = logging.getLogger(__name__)
-Base = declarative_base()
+
+# Force all tables and enums into the 'avatar' schema to bypass RDS public schema permission errors
+metadata_obj = MetaData(schema="avatar")
+Base = declarative_base(metadata=metadata_obj)
 
 
 def _ensure_database_exists():
@@ -50,6 +54,13 @@ def _ensure_database_exists():
 def _create_tables():
     """Import all models and create their tables if they don't exist."""
     import models  # noqa: F401  — registers models with Base
+    from sqlalchemy import text
+    
+    # Ensure the 'avatar' schema is created before creating any tables
+    with engine.connect() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS avatar;"))
+        conn.commit()
+    
     Base.metadata.create_all(bind=engine)
     logger.info("✅ Database tables ready.")
 

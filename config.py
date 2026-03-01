@@ -14,7 +14,15 @@ class Settings(BaseSettings):
     bedrock_model_id: str = "anthropic.claude-sonnet-4-5-20250929-v1:0"
 
     # ─── PostgreSQL ───
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/k8s_incidents"
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_user: str = "postgres"
+    db_password: str = "password"
+    db_name: str = "k8s_incident_hub"
+    
+    @property
+    def database_url(self) -> str:
+        return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
 
     # ─── Kubernetes MCP Server ───
     k8s_mcp_server_command: str = "kubectl-mcp-server"
