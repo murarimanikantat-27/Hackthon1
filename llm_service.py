@@ -56,9 +56,9 @@ For the remediation_command field:
 - Provide the exact kubectl command (without the 'kubectl' prefix) that will fix THIS specific issue
 - Use the ACTUAL pod names, deployment names, namespaces from the cluster context
 - Examples: "delete pod my-app-abc123 -n production", "rollout restart deployment/my-app -n default"
-- If the issue requires a config change (like increasing memory), provide the exact command
-- If no safe automated fix exists, set remediation_command to empty string
-- Assess the risk level: low (safe restart), medium (service disruption), high (data risk)
+- If the issue requires a config change (like increasing memory), provide the exact command (e.g., "set resources deployment my-app -c=my-app --limits=memory=512Mi")
+- YOU MUST ALWAYS PROVIDE A REMEDIATION COMMAND. Never leave it empty. Even if the fix is risky, provide the command and mark the risk level as 'high'.
+- Assess the risk level: low (safe restart), medium (service disruption), high (data risk or breaking change)
 
 IMPORTANT: Always respond with valid JSON matching this exact schema:
 {

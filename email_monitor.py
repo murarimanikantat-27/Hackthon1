@@ -27,6 +27,7 @@ from models import Incident, IncidentStatus, Severity, RCAReport
 from mcp_client import K8sMCPClient
 from llm_service import LLMService
 from incident_pipeline import IncidentPipeline
+from remediation_rules import find_matching_rule, build_remediation_command
 
 logger = logging.getLogger("email-monitor")
 
@@ -286,13 +287,33 @@ async def _run_rca_for_incident(incident_id: int):
             logger.info(f"✅ Claude responded")
 
             if rca_result:
-                # Log the LLM-generated remediation command
-                if rca_result.remediation_command:
+                # If LLM didn't provide a remediation command, compute from hardcoded rules
+                if not rca_result.remediation_command:
+                    raw_str = json.dumps(incident.raw_data) if incident.raw_data else ""
+                    rule = find_matching_rule(incident.description or "", raw_str)
+                    if rule:
+                        context = {
+                            "namespace": incident.namespace or "default",
+                            "pod_name": incident.resource_name or "",
+                            "deployment_name": incident.resource_name or "",
+                        }
+                        fallback_cmd = build_remediation_command(rule, context)
+                        if fallback_cmd:
+                            # Remove 'kubectl ' prefix since the field stores just the args
+                            if fallback_cmd.startswith("kubectl "):
+                                fallback_cmd = fallback_cmd[len("kubectl "):]
+                            rca_result.remediation_command = fallback_cmd
+                            rca_result.remediation_risk = rule.risk_level
+                            rca_result.remediation_explanation = f"Matched rule: {rule.name} — {rule.description}"
+                            logger.info(f"📋 Fallback command from hardcoded rule '{rule.name}': kubectl {fallback_cmd}")
+                        else:
+                            logger.info(f"⚠️ Matched rule '{rule.name}' but no command generated")
+                    else:
+                        logger.info(f"⚠️ No matching hardcoded rule found either")
+                else:
                     logger.info(f"🤖 LLM suggested command: kubectl {rca_result.remediation_command}")
                     logger.info(f"   Risk: {rca_result.remediation_risk}")
                     logger.info(f"   Reason: {rca_result.remediation_explanation}")
-                else:
-                    logger.info(f"⚠️ LLM did not suggest a remediation command")
 
                 rca_report = RCAReport(
                     incident_id=incident.id,
@@ -464,8 +485,8 @@ class EmailAlertMonitor:
         return created_ids
 
     async def run_loop(self, shutdown_event: asyncio.Event):
-        """Main polling loop — check email periodically."""
-        logger.info(f"📧 Email Alert Monitor started (polling every {self.poll_interval}s)")
+        """Main loop — use IMAP IDLE for push-based instant email monitoring."""
+        logger.info(f"📧 Email Alert Monitor started (listening in real-time via IMAP IDLE)")
         logger.info(f"   Email: {self.email_address}")
         logger.info(f"   Alert sender filter: {self.alert_sender or 'ANY'}")
 
@@ -474,32 +495,45 @@ class EmailAlertMonitor:
         try:
             while not shutdown_event.is_set():
                 try:
-                    # Reconnect if needed
-                    try:
-                        self._mail.noop()
-                    except Exception:
-                        logger.info("Reconnecting to email server...")
-                        self.connect()
-
-                    # Check for new alerts
+                    # 1. Process any existing unread alerts immediately
                     incident_ids = await self.process_alerts()
-
-                    # Trigger RCA for each new incident
                     for inc_id in incident_ids:
                         asyncio.create_task(_run_rca_for_incident(inc_id))
 
-                except Exception as e:
-                    logger.error(f"Email poll cycle error: {e}", exc_info=True)
+                    # 2. Enter IMAP IDLE mode
+                    if shutdown_event.is_set():
+                        break
 
-                # Wait for next cycle
-                try:
-                    await asyncio.wait_for(
-                        shutdown_event.wait(),
-                        timeout=self.poll_interval,
-                    )
-                    break
-                except asyncio.TimeoutError:
-                    pass
+                    logger.info("⏳ Waiting for new alerts (IMAP IDLE)...")
+                    
+                    # We run the blocking IDLE command in a background thread 
+                    # so we don't block the asyncio event loop
+                    def _wait_for_idle():
+                        self._mail.send(b"IDLE\r\n")
+                        # Wait for a response (any unseen message or network event)
+                        response = self._mail.readline()
+                        # Send DONE to exit IDLE state
+                        self._mail.send(b"DONE\r\n")
+                        self._mail.readline()
+                        return response
+
+                    # Run blocking idle in executor, but allow timeout/cancellation
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.to_thread(_wait_for_idle),
+                            timeout=self.poll_interval # Wake up periodically just in case
+                        )
+                    except asyncio.TimeoutError:
+                        pass # Normal timeout, just loop around and check/idle again
+                    
+                except Exception as e:
+                    logger.error(f"Email monitor error: {e}", exc_info=True)
+                    # Reconnect on error
+                    await asyncio.sleep(5)
+                    try:
+                        self.connect()
+                    except Exception as reconnect_err:
+                        logger.error(f"Reconnect failed: {reconnect_err}")
 
         finally:
             self.disconnect()
