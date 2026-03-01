@@ -29,6 +29,9 @@ class RCAResult(BaseModel):
     confidence_score: float = Field(description="Confidence in the analysis, 0.0 to 1.0")
     affected_components: List[str] = Field(description="List of affected Kubernetes resources")
     estimated_impact: str = Field(description="Impact assessment on the system")
+    remediation_command: str = Field(default="", description="Exact kubectl command to remediate the issue")
+    remediation_risk: str = Field(default="medium", description="Risk level of running the command: low/medium/high")
+    remediation_explanation: str = Field(default="", description="Why this command will fix the issue")
 
 
 # ─── System Prompt ───
@@ -47,6 +50,15 @@ When analyzing an incident, you must:
 3. Assess the severity and blast radius
 4. Provide specific, actionable recommendations
 5. Suggest both immediate fixes and long-term preventive measures
+6. GENERATE THE EXACT kubectl REMEDIATION COMMAND to fix this specific issue based on cluster context
+
+For the remediation_command field:
+- Provide the exact kubectl command (without the 'kubectl' prefix) that will fix THIS specific issue
+- Use the ACTUAL pod names, deployment names, namespaces from the cluster context
+- Examples: "delete pod my-app-abc123 -n production", "rollout restart deployment/my-app -n default"
+- If the issue requires a config change (like increasing memory), provide the exact command
+- If no safe automated fix exists, set remediation_command to empty string
+- Assess the risk level: low (safe restart), medium (service disruption), high (data risk)
 
 IMPORTANT: Always respond with valid JSON matching this exact schema:
 {
@@ -58,7 +70,10 @@ IMPORTANT: Always respond with valid JSON matching this exact schema:
     "preventive_measures": ["long-term prevention steps"],
     "confidence_score": 0.0 to 1.0,
     "affected_components": ["list of affected k8s resources"],
-    "estimated_impact": "string — impact description"
+    "estimated_impact": "string — impact description",
+    "remediation_command": "exact kubectl command to fix the issue (without kubectl prefix)",
+    "remediation_risk": "low | medium | high",
+    "remediation_explanation": "brief explanation of why this command will fix the issue"
 }
 
 Do NOT include any text outside the JSON object. Return ONLY valid JSON."""

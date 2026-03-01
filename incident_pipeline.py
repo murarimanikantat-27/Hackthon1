@@ -261,50 +261,63 @@ class IncidentPipeline:
         self, incident: Incident, rca_result: RCAResult, db: Session,
         manual_approval: bool = False,
     ) -> Optional[RemediationAction]:
-        """Execute remediation. If manual_approval=True, skip auto_approve check."""
+        """Execute remediation. Uses LLM-generated command first, hardcoded rules as fallback."""
         logger.info(f"🔧 Step 5: Evaluating remediation for Incident #{incident.id}")
 
         incident.status = IncidentStatus.REMEDIATING
         db.commit()
 
-        # Find matching remediation rule
-        raw_str = json.dumps(incident.raw_data) if incident.raw_data else ""
-        rule = find_matching_rule(incident.description, raw_str)
+        command = None
+        action_type = "llm_generated"
+        risk_level = "medium"
 
-        if not rule:
-            logger.info("  No matching remediation rule found. Manual review needed.")
+        # ── Priority 1: Use LLM-generated remediation command ──
+        if hasattr(rca_result, 'remediation_command') and rca_result.remediation_command:
+            command = f"kubectl {rca_result.remediation_command}"
+            risk_level = getattr(rca_result, 'remediation_risk', 'medium')
+            explanation = getattr(rca_result, 'remediation_explanation', '')
+            action_type = "llm_generated"
+            logger.info(f"  🤖 LLM suggested command: {command}")
+            logger.info(f"  📋 Reason: {explanation}")
+            logger.info(f"  ⚠️ Risk: {risk_level}")
+        else:
+            # ── Priority 2: Fall back to hardcoded remediation rules ──
+            raw_str = json.dumps(incident.raw_data) if incident.raw_data else ""
+            rule = find_matching_rule(incident.description, raw_str)
+
+            if rule:
+                context = {
+                    "namespace": incident.namespace or "default",
+                    "pod_name": incident.resource_name or "",
+                    "deployment_name": incident.resource_name or "",
+                }
+                command = build_remediation_command(rule, context)
+                action_type = rule.name
+                risk_level = rule.risk_level
+                logger.info(f"  📋 Matched hardcoded rule: {rule.name}")
+            else:
+                logger.info("  No matching remediation rule found and no LLM command. Manual review needed.")
+                return None
+
+        if not command:
+            logger.info("  ⏸️ No remediation command available.")
             return None
-
-        # Build the command
-        context = {
-            "namespace": incident.namespace or "default",
-            "pod_name": incident.resource_name or "",
-            "deployment_name": incident.resource_name or "",
-        }
-        command = build_remediation_command(rule, context)
 
         # Create the remediation action record
         action = RemediationAction(
             incident_id=incident.id,
-            action_type=rule.name,
+            action_type=action_type,
             command=command,
             status=RemediationStatus.PENDING,
         )
 
-        if not manual_approval and not settings.auto_remediate and not rule.auto_approve:
+        # Check auto-approve (skip for manual clicks)
+        if not manual_approval and not settings.auto_remediate and risk_level != "low":
             action.status = RemediationStatus.SKIPPED
-            action.result = "Auto-remediation disabled. Requires manual approval."
+            action.result = f"Requires manual approval (risk: {risk_level}). Click 'Trigger Remediation' to execute."
             db.add(action)
             db.commit()
-            logger.info(f"  ⏸️ Remediation skipped (manual approval required): {rule.name}")
-            return action
-
-        if not command:
-            action.status = RemediationStatus.SKIPPED
-            action.result = "No auto-fix available for this incident type."
-            db.add(action)
-            db.commit()
-            logger.info(f"  ⏸️ No auto-fix command for: {rule.name}")
+            logger.info(f"  ⏸️ Remediation skipped (manual approval required, risk={risk_level})")
             return action
 
         # Execute the remediation

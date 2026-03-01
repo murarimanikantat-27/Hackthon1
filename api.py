@@ -62,6 +62,9 @@ class RCADetail(BaseModel):
     confidence_score: float
     llm_model: Optional[str]
     created_at: datetime
+    remediation_command: Optional[str] = ""
+    remediation_risk: Optional[str] = ""
+    remediation_explanation: Optional[str] = ""
 
     class Config:
         from_attributes = True
@@ -188,6 +191,33 @@ def get_incident(incident_id: int, db: Session = Depends(get_db)):
     if not incident:
         raise HTTPException(status_code=404, detail="Incident not found")
 
+    # Build RCA reports with LLM-generated remediation command
+    rca_details = []
+    for r in incident.rca_reports:
+        rem_cmd = ""
+        rem_risk = ""
+        rem_expl = ""
+        if r.raw_response:
+            try:
+                raw = json.loads(r.raw_response)
+                rem_cmd = raw.get("remediation_command", "")
+                rem_risk = raw.get("remediation_risk", "")
+                rem_expl = raw.get("remediation_explanation", "")
+            except (json.JSONDecodeError, TypeError):
+                pass
+        rca_details.append(RCADetail(
+            id=r.id,
+            root_cause=r.root_cause,
+            analysis=r.analysis,
+            recommendations=r.recommendations,
+            confidence_score=r.confidence_score or 0.0,
+            llm_model=r.llm_model,
+            created_at=r.created_at,
+            remediation_command=rem_cmd,
+            remediation_risk=rem_risk,
+            remediation_explanation=rem_expl,
+        ))
+
     return IncidentFull(
         incident=IncidentSummary(
             id=incident.id,
@@ -200,18 +230,7 @@ def get_incident(incident_id: int, db: Session = Depends(get_db)):
             detected_at=incident.detected_at,
             resolved_at=incident.resolved_at,
         ),
-        rca_reports=[
-            RCADetail(
-                id=r.id,
-                root_cause=r.root_cause,
-                analysis=r.analysis,
-                recommendations=r.recommendations,
-                confidence_score=r.confidence_score or 0.0,
-                llm_model=r.llm_model,
-                created_at=r.created_at,
-            )
-            for r in incident.rca_reports
-        ],
+        rca_reports=rca_details,
         remediation_actions=[
             RemediationDetail(
                 id=a.id,
@@ -250,6 +269,20 @@ async def trigger_remediation(incident_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="No RCA found for this incident")
 
         from llm_service import RCAResult
+
+        # Try to recover LLM-generated remediation command from stored raw_response
+        remediation_command = ""
+        remediation_risk = "medium"
+        remediation_explanation = ""
+        if rca_report.raw_response:
+            try:
+                raw_data = json.loads(rca_report.raw_response)
+                remediation_command = raw_data.get("remediation_command", "")
+                remediation_risk = raw_data.get("remediation_risk", "medium")
+                remediation_explanation = raw_data.get("remediation_explanation", "")
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         rca_result = RCAResult(
             root_cause=rca_report.root_cause,
             analysis=rca_report.analysis or "",
@@ -260,9 +293,21 @@ async def trigger_remediation(incident_id: int, db: Session = Depends(get_db)):
             confidence_score=rca_report.confidence_score or 0.0,
             affected_components=[],
             estimated_impact="",
+            remediation_command=remediation_command,
+            remediation_risk=remediation_risk,
+            remediation_explanation=remediation_explanation,
         )
 
         action = await pipeline.execute_remediation(incident, rca_result, db, manual_approval=True)
+
+        # Update incident status based on remediation result
+        if action and action.status == RemediationStatus.SUCCESS:
+            incident.status = IncidentStatus.RESOLVED
+            incident.resolved_at = datetime.now(timezone.utc)
+            db.commit()
+        elif action and action.status == RemediationStatus.FAILED:
+            incident.status = IncidentStatus.FAILED
+            db.commit()
 
         return {
             "status": "success" if action else "no_action",
@@ -275,7 +320,10 @@ async def trigger_remediation(incident_id: int, db: Session = Depends(get_db)):
             } if action else None,
         }
     finally:
-        await mcp_client.disconnect()
+        try:
+            await mcp_client.disconnect()
+        except Exception:
+            pass
 
 
 @app.get("/api/dashboard/stats", response_model=DashboardStats)

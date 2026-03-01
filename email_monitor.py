@@ -14,6 +14,7 @@ Flow:
 import asyncio
 import email
 import imaplib
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -205,16 +206,43 @@ async def _run_rca_for_incident(incident_id: int):
             except Exception as e:
                 logger.warning(f"Could not get events: {e}")
 
-            # Step 3: Get pod details if we know the pod name
+            # Step 3: Get deployments in the namespace
+            try:
+                logger.info(f"📦 Getting deployments in namespace: {namespace}")
+                deployments = await asyncio.wait_for(
+                    mcp_client.get_deployments(namespace), timeout=30
+                )
+                cluster_context["deployments"] = deployments
+                logger.info(f"✅ Got deployments data")
+            except Exception as e:
+                logger.warning(f"Could not get deployments: {e}")
+
+            # Step 4: Get pod details — try describe and logs for relevant pods
             additional_context_parts = []
-            if incident.resource_name and incident.resource_type == "Pod":
+            pod_name = incident.resource_name or ""
+
+            # If no specific pod, try to find one from pods data that matches the alert
+            if not pod_name and cluster_context.get("pods"):
+                pods_str = str(cluster_context["pods"])
+                # Look for pods with errors
+                for pattern in ["CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff", "Pending"]:
+                    for line in pods_str.split("\n"):
+                        if pattern.lower() in line.lower():
+                            parts = line.split()
+                            if parts:
+                                pod_name = parts[0]
+                                break
+                    if pod_name:
+                        break
+
+            if pod_name:
                 try:
-                    logger.info(f"🔎 Describing pod: {incident.resource_name}")
+                    logger.info(f"🔎 Describing pod: {pod_name}")
                     pod_desc = await asyncio.wait_for(
-                        mcp_client.describe_pod(incident.resource_name, namespace),
+                        mcp_client.describe_pod(pod_name, namespace),
                         timeout=30,
                     )
-                    additional_context_parts.append(f"Pod Description:\n{pod_desc}")
+                    additional_context_parts.append(f"### Pod Description\n```\n{pod_desc}\n```")
                     logger.info(f"✅ Got pod description")
                 except asyncio.TimeoutError:
                     logger.warning(f"⏰ Timeout describing pod")
@@ -222,21 +250,32 @@ async def _run_rca_for_incident(incident_id: int):
                     logger.warning(f"Could not describe pod: {e}")
 
                 try:
-                    logger.info(f"📝 Getting pod logs: {incident.resource_name}")
+                    logger.info(f"📝 Getting pod logs: {pod_name}")
                     pod_logs = await asyncio.wait_for(
-                        mcp_client.get_pod_logs(incident.resource_name, namespace),
+                        mcp_client.get_pod_logs(pod_name, namespace),
                         timeout=30,
                     )
-                    additional_context_parts.append(f"Pod Logs:\n{pod_logs[:5000]}")
+                    additional_context_parts.append(f"### Pod Logs\n```\n{pod_logs[:5000]}\n```")
                     logger.info(f"✅ Got pod logs")
                 except asyncio.TimeoutError:
                     logger.warning(f"⏰ Timeout getting pod logs")
                 except Exception as e:
                     logger.warning(f"Could not get pod logs: {e}")
 
+            # Step 5: Get node status
+            try:
+                logger.info(f"🖥️ Getting node status")
+                nodes = await asyncio.wait_for(
+                    mcp_client.get_nodes(), timeout=30
+                )
+                cluster_context["nodes"] = nodes
+                logger.info(f"✅ Got node status")
+            except Exception as e:
+                logger.warning(f"Could not get nodes: {e}")
+
             additional_context = "\n\n".join(additional_context_parts) if additional_context_parts else None
 
-            # Step 4: Call Claude for RCA
+            # Step 6: Call Claude for RCA + remediation command
             logger.info(f"🤖 Sending data to Claude for RCA generation...")
             rca_result = llm_service.generate_rca(
                 incident_title=incident.title,
@@ -247,6 +286,14 @@ async def _run_rca_for_incident(incident_id: int):
             logger.info(f"✅ Claude responded")
 
             if rca_result:
+                # Log the LLM-generated remediation command
+                if rca_result.remediation_command:
+                    logger.info(f"🤖 LLM suggested command: kubectl {rca_result.remediation_command}")
+                    logger.info(f"   Risk: {rca_result.remediation_risk}")
+                    logger.info(f"   Reason: {rca_result.remediation_explanation}")
+                else:
+                    logger.info(f"⚠️ LLM did not suggest a remediation command")
+
                 rca_report = RCAReport(
                     incident_id=incident.id,
                     root_cause=rca_result.root_cause,
@@ -254,6 +301,7 @@ async def _run_rca_for_incident(incident_id: int):
                     recommendations=rca_result.recommendations,
                     confidence_score=rca_result.confidence_score,
                     llm_model=settings.bedrock_model_id,
+                    raw_response=json.dumps(rca_result.model_dump()),
                 )
                 db.add(rca_report)
                 incident.status = IncidentStatus.ANALYZING
