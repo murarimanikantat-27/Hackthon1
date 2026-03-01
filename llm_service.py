@@ -1,0 +1,216 @@
+"""
+LLM Service — Uses AWS Bedrock Claude Sonnet 4.5 for generating
+root cause analysis (RCA) from Kubernetes incident data.
+"""
+
+import json
+import re
+import logging
+from typing import Any, Dict, List, Optional
+
+import boto3
+from pydantic import BaseModel, Field
+
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+
+# ─── Response Models ───
+
+class RCAResult(BaseModel):
+    """Structured RCA output from the LLM."""
+    root_cause: str = Field(description="Primary root cause of the incident")
+    analysis: str = Field(description="Detailed analysis explaining the issue")
+    severity_assessment: str = Field(description="Critical / High / Medium / Low")
+    recommendations: List[str] = Field(description="Ordered list of recommended actions")
+    immediate_actions: List[str] = Field(description="Actions that can be taken immediately")
+    preventive_measures: List[str] = Field(description="Long-term preventive steps")
+    confidence_score: float = Field(description="Confidence in the analysis, 0.0 to 1.0")
+    affected_components: List[str] = Field(description="List of affected Kubernetes resources")
+    estimated_impact: str = Field(description="Impact assessment on the system")
+
+
+# ─── System Prompt ───
+
+SYSTEM_PROMPT = """You are an expert Kubernetes Site Reliability Engineer (SRE) with deep expertise in:
+- Kubernetes architecture, pod lifecycle, and networking
+- Container runtime troubleshooting (Docker, containerd)
+- Application performance debugging
+- Infrastructure and cloud-native best practices
+
+Your role is to analyze Kubernetes incidents and generate comprehensive Root Cause Analysis (RCA) reports.
+
+When analyzing an incident, you must:
+1. Identify the PRIMARY root cause (not just symptoms)
+2. Trace the chain of events that led to the issue
+3. Assess the severity and blast radius
+4. Provide specific, actionable recommendations
+5. Suggest both immediate fixes and long-term preventive measures
+
+IMPORTANT: Always respond with valid JSON matching this exact schema:
+{
+    "root_cause": "string — clear one-line root cause",
+    "analysis": "string — detailed multi-paragraph analysis",
+    "severity_assessment": "Critical | High | Medium | Low",
+    "recommendations": ["ordered list of recommendations"],
+    "immediate_actions": ["actions that can be executed right now"],
+    "preventive_measures": ["long-term prevention steps"],
+    "confidence_score": 0.0 to 1.0,
+    "affected_components": ["list of affected k8s resources"],
+    "estimated_impact": "string — impact description"
+}
+
+Do NOT include any text outside the JSON object. Return ONLY valid JSON."""
+
+
+class LLMService:
+    """Service for generating RCA using AWS Bedrock Claude Sonnet 4.5."""
+
+    def __init__(self):
+        self.client = boto3.client(
+            "bedrock-runtime",
+            region_name=settings.aws_region,
+            aws_access_key_id=settings.aws_access_key_id or None,
+            aws_secret_access_key=settings.aws_secret_access_key or None,
+        )
+        self.model_id = settings.bedrock_model_id
+        logger.info(f"LLM Service initialized with model: {self.model_id}")
+
+    def generate_rca(
+        self,
+        incident_title: str,
+        incident_description: str,
+        cluster_context: Dict[str, Any],
+        additional_context: Optional[str] = None,
+    ) -> RCAResult:
+        """
+        Generate a Root Cause Analysis for a Kubernetes incident.
+
+        Args:
+            incident_title: Short title of the incident
+            incident_description: Description of what happened
+            cluster_context: Raw data from MCP (pods, events, logs, etc.)
+            additional_context: Optional extra context (pod describe, logs)
+
+        Returns:
+            RCAResult with structured analysis
+        """
+        # Build the user message with all context
+        user_message = self._build_prompt(
+            incident_title, incident_description, cluster_context, additional_context
+        )
+
+        logger.info(f"Sending RCA request to Bedrock for: {incident_title}")
+
+        try:
+            # Call AWS Bedrock
+            response = self.client.invoke_model(
+                modelId=self.model_id,
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 4096,
+                    "temperature": 0.2,
+                    "system": SYSTEM_PROMPT,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": user_message,
+                        }
+                    ],
+                }),
+            )
+
+            # Parse the response
+            response_body = json.loads(response["body"].read())
+            assistant_text = response_body["content"][0]["text"]
+
+            logger.info("✅ Received RCA response from Bedrock.")
+            logger.debug(f"Raw LLM response: {assistant_text}")
+
+            # Strip markdown code block wrappers if present
+            clean_text = assistant_text.strip()
+            clean_text = re.sub(r'^```(?:json)?\s*', '', clean_text)
+            clean_text = re.sub(r'\s*```$', '', clean_text)
+            clean_text = clean_text.strip()
+
+            # Parse JSON response into structured model
+            rca_data = json.loads(clean_text)
+            return RCAResult(**rca_data)
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM JSON response: {e}")
+            logger.error(f"Raw response: {assistant_text}")
+            # Return a fallback RCA
+            return RCAResult(
+                root_cause="Unable to parse LLM response",
+                analysis=f"Raw LLM response:\n{assistant_text}",
+                severity_assessment="Medium",
+                recommendations=["Review the raw LLM output manually"],
+                immediate_actions=["Check the incident manually"],
+                preventive_measures=["Investigate LLM prompt quality"],
+                confidence_score=0.1,
+                affected_components=[],
+                estimated_impact="Unknown — requires manual review",
+            )
+        except Exception as e:
+            logger.error(f"Bedrock API call failed: {e}")
+            raise
+
+    def _build_prompt(
+        self,
+        title: str,
+        description: str,
+        cluster_context: Dict[str, Any],
+        additional_context: Optional[str] = None,
+    ) -> str:
+        """Build a detailed prompt with all available context."""
+        sections = [
+            f"## Incident Report",
+            f"**Title:** {title}",
+            f"**Description:** {description}",
+            "",
+            "## Kubernetes Cluster Context",
+        ]
+
+        for key, value in cluster_context.items():
+            if isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    sections.append(f"### {key} — {sub_key}")
+                    sections.append(f"```\n{sub_value}\n```")
+            else:
+                sections.append(f"### {key}")
+                sections.append(f"```\n{value}\n```")
+
+        if additional_context:
+            sections.append("")
+            sections.append("## Additional Context")
+            sections.append(additional_context)
+
+        sections.append("")
+        sections.append("## Instructions")
+        sections.append("Analyze the above incident data and provide a comprehensive RCA in JSON format.")
+
+        return "\n".join(sections)
+
+    def test_connection(self) -> bool:
+        """Test connectivity to Bedrock."""
+        try:
+            response = self.client.invoke_model(
+                modelId=self.model_id,
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 50,
+                    "messages": [{"role": "user", "content": "Say OK"}],
+                }),
+            )
+            body = json.loads(response["body"].read())
+            logger.info(f"✅ Bedrock connection OK: {body['content'][0]['text']}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Bedrock connection failed: {e}")
+            return False

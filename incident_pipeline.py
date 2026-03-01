@@ -1,0 +1,453 @@
+"""
+Incident Pipeline — orchestrates the 7-step workflow:
+1. Detect incidents from Kubernetes MCP data
+2. Validate and enrich incident data
+3. Generate Root Cause Analysis via LLM
+4. Store incident + RCA in PostgreSQL
+5. Execute remediation (if approved)
+6. Monitor post-fix stability
+7. Update final status
+"""
+
+import asyncio
+import json
+import logging
+import re
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy.orm import Session
+
+from config import settings
+from database import SessionLocal
+from mcp_client import K8sMCPClient
+from llm_service import LLMService, RCAResult
+from models import Incident, RCAReport, RemediationAction, IncidentStatus, Severity, RemediationStatus
+from remediation_rules import find_matching_rule, build_remediation_command
+
+logger = logging.getLogger(__name__)
+
+
+class IncidentPipeline:
+    """Orchestrates the full incident lifecycle from detection to resolution."""
+
+    def __init__(self, mcp_client: K8sMCPClient, llm_service: LLMService):
+        self.mcp = mcp_client
+        self.llm = llm_service
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 1: INCIDENT DETECTION
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async def detect_incidents(self) -> List[Dict[str, Any]]:
+        """
+        Poll the Kubernetes cluster for anomalies and return raw incident data.
+        Checks for: failing pods, warning events, unhealthy nodes.
+        """
+        logger.info("🔍 Step 1: Detecting incidents...")
+        incidents = []
+
+        for namespace in settings.namespace_list:
+            # Check for failing pods
+            try:
+                pod_data = await self.mcp.get_pods(namespace)
+                failing_pods = self._parse_failing_pods(pod_data, namespace)
+                incidents.extend(failing_pods)
+            except Exception as e:
+                logger.error(f"Error detecting pod issues in {namespace}: {e}")
+
+            # Check for warning events
+            try:
+                event_data = await self.mcp.get_events(namespace)
+                event_incidents = self._parse_warning_events(event_data, namespace)
+                incidents.extend(event_incidents)
+            except Exception as e:
+                logger.error(f"Error detecting events in {namespace}: {e}")
+
+        logger.info(f"  Found {len(incidents)} potential incidents.")
+        return incidents
+
+    def _parse_failing_pods(self, pod_data: str, namespace: str) -> List[Dict[str, Any]]:
+        """Parse pod output to find pods in error states."""
+        incidents = []
+        error_patterns = [
+            "CrashLoopBackOff", "Error", "OOMKilled",
+            "ImagePullBackOff", "ErrImagePull", "Pending",
+            "Evicted", "Terminating",
+        ]
+
+        lines = pod_data.strip().split("\n")
+        for line in lines:
+            for pattern in error_patterns:
+                if pattern.lower() in line.lower():
+                    # Extract pod name (usually first column)
+                    parts = line.split()
+                    pod_name = parts[0] if parts else "unknown"
+
+                    incidents.append({
+                        "title": f"{pattern} detected: {pod_name}",
+                        "severity": self._classify_severity(pattern),
+                        "namespace": namespace,
+                        "resource_type": "pod",
+                        "resource_name": pod_name,
+                        "description": f"Pod {pod_name} in namespace {namespace} is in {pattern} state.",
+                        "raw_data": line,
+                        "pattern": pattern,
+                    })
+                    break  # one incident per line
+
+        return incidents
+
+    def _parse_warning_events(self, event_data: str, namespace: str) -> List[Dict[str, Any]]:
+        """Parse event output for warning-type events."""
+        incidents = []
+        lines = event_data.strip().split("\n")
+
+        for line in lines:
+            if "Warning" in line or "warning" in line:
+                incidents.append({
+                    "title": f"Warning event in {namespace}",
+                    "severity": "medium",
+                    "namespace": namespace,
+                    "resource_type": "event",
+                    "resource_name": "",
+                    "description": line.strip(),
+                    "raw_data": line,
+                    "pattern": "WarningEvent",
+                })
+
+        return incidents
+
+    def _classify_severity(self, pattern: str) -> str:
+        """Map error patterns to severity levels."""
+        severity_map = {
+            "OOMKilled": "critical",
+            "CrashLoopBackOff": "high",
+            "Error": "high",
+            "ImagePullBackOff": "medium",
+            "ErrImagePull": "medium",
+            "Pending": "medium",
+            "Evicted": "low",
+            "Terminating": "info",
+        }
+        return severity_map.get(pattern, "medium")
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 2: VALIDATION & ENRICHMENT
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async def validate_incident(self, incident_data: Dict[str, Any], db: Session) -> Optional[Incident]:
+        """
+        Validate the incident is real and not a duplicate.
+        Enrich with pod logs and describe output.
+        """
+        logger.info(f"✅ Step 2: Validating incident — {incident_data['title']}")
+
+        # Check for duplicate (same resource + pattern in last hour)
+        existing = db.query(Incident).filter(
+            Incident.resource_name == incident_data.get("resource_name"),
+            Incident.status.notin_([IncidentStatus.RESOLVED, IncidentStatus.FAILED]),
+        ).first()
+
+        if existing:
+            logger.info(f"  Skipping duplicate: {incident_data['title']} (existing incident #{existing.id})")
+            return None
+
+        # Enrich with additional data from MCP
+        enrichment = {}
+        resource_name = incident_data.get("resource_name", "")
+        namespace = incident_data.get("namespace", "default")
+
+        if incident_data.get("resource_type") == "pod" and resource_name:
+            try:
+                enrichment["pod_describe"] = await self.mcp.describe_pod(resource_name, namespace)
+            except Exception as e:
+                logger.warning(f"  Failed to describe pod: {e}")
+
+            try:
+                enrichment["pod_logs"] = await self.mcp.get_pod_logs(resource_name, namespace, tail_lines=50)
+            except Exception as e:
+                logger.warning(f"  Failed to get pod logs: {e}")
+
+        # Create the Incident record
+        severity_str = incident_data.get("severity", "medium")
+        severity_enum = Severity(severity_str) if severity_str in [s.value for s in Severity] else Severity.MEDIUM
+
+        incident = Incident(
+            title=incident_data["title"],
+            severity=severity_enum,
+            namespace=namespace,
+            resource_type=incident_data.get("resource_type"),
+            resource_name=resource_name,
+            description=incident_data.get("description", ""),
+            raw_data={
+                "original": incident_data.get("raw_data"),
+                "enrichment": enrichment,
+            },
+            status=IncidentStatus.VALIDATING,
+        )
+
+        db.add(incident)
+        db.commit()
+        db.refresh(incident)
+
+        logger.info(f"  Created Incident #{incident.id}: {incident.title}")
+        return incident
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 3: ROOT CAUSE ANALYSIS
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async def analyze_incident(self, incident: Incident, db: Session) -> RCAResult:
+        """Send incident + cluster context to LLM for RCA generation."""
+        logger.info(f"🧠 Step 3: Generating RCA for Incident #{incident.id}")
+
+        incident.status = IncidentStatus.ANALYZING
+        db.commit()
+
+        # Gather cluster context
+        cluster_context = await self.mcp.get_cluster_health()
+
+        # Build additional context from enrichment data
+        additional_context = ""
+        if incident.raw_data and isinstance(incident.raw_data, dict):
+            enrichment = incident.raw_data.get("enrichment", {})
+            if enrichment:
+                additional_context = "\n".join(
+                    f"### {key}\n```\n{value}\n```" for key, value in enrichment.items()
+                )
+
+        # Call LLM
+        rca_result = self.llm.generate_rca(
+            incident_title=incident.title,
+            incident_description=incident.description,
+            cluster_context=cluster_context,
+            additional_context=additional_context if additional_context else None,
+        )
+
+        logger.info(f"  RCA generated with confidence: {rca_result.confidence_score}")
+        return rca_result
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 4: DATABASE STORAGE
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    def store_rca(self, incident: Incident, rca_result: RCAResult, db: Session) -> RCAReport:
+        """Persist the RCA report to PostgreSQL."""
+        logger.info(f"💾 Step 4: Storing RCA for Incident #{incident.id}")
+
+        rca_report = RCAReport(
+            incident_id=incident.id,
+            root_cause=rca_result.root_cause,
+            analysis=rca_result.analysis,
+            recommendations=rca_result.recommendations,
+            confidence_score=rca_result.confidence_score,
+            llm_model=settings.bedrock_model_id,
+            raw_response=json.dumps(rca_result.model_dump()),
+        )
+
+        db.add(rca_report)
+        db.commit()
+        db.refresh(rca_report)
+
+        logger.info(f"  Stored RCA Report #{rca_report.id}")
+        return rca_report
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 5: REMEDIATION
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async def execute_remediation(
+        self, incident: Incident, rca_result: RCAResult, db: Session,
+        manual_approval: bool = False,
+    ) -> Optional[RemediationAction]:
+        """Execute remediation. If manual_approval=True, skip auto_approve check."""
+        logger.info(f"🔧 Step 5: Evaluating remediation for Incident #{incident.id}")
+
+        incident.status = IncidentStatus.REMEDIATING
+        db.commit()
+
+        # Find matching remediation rule
+        raw_str = json.dumps(incident.raw_data) if incident.raw_data else ""
+        rule = find_matching_rule(incident.description, raw_str)
+
+        if not rule:
+            logger.info("  No matching remediation rule found. Manual review needed.")
+            return None
+
+        # Build the command
+        context = {
+            "namespace": incident.namespace or "default",
+            "pod_name": incident.resource_name or "",
+            "deployment_name": incident.resource_name or "",
+        }
+        command = build_remediation_command(rule, context)
+
+        # Create the remediation action record
+        action = RemediationAction(
+            incident_id=incident.id,
+            action_type=rule.name,
+            command=command,
+            status=RemediationStatus.PENDING,
+        )
+
+        if not manual_approval and not settings.auto_remediate and not rule.auto_approve:
+            action.status = RemediationStatus.SKIPPED
+            action.result = "Auto-remediation disabled. Requires manual approval."
+            db.add(action)
+            db.commit()
+            logger.info(f"  ⏸️ Remediation skipped (manual approval required): {rule.name}")
+            return action
+
+        if not command:
+            action.status = RemediationStatus.SKIPPED
+            action.result = "No auto-fix available for this incident type."
+            db.add(action)
+            db.commit()
+            logger.info(f"  ⏸️ No auto-fix command for: {rule.name}")
+            return action
+
+        # Execute the remediation
+        action.status = RemediationStatus.EXECUTING
+        action.executed_at = datetime.now(timezone.utc)
+        db.add(action)
+        db.commit()
+
+        try:
+            result = await self.mcp.execute_remediation_command(command)
+            action.result = result
+            action.status = RemediationStatus.SUCCESS
+            logger.info(f"  ✅ Remediation executed: {command}")
+        except Exception as e:
+            action.result = str(e)
+            action.status = RemediationStatus.FAILED
+            logger.error(f"  ❌ Remediation failed: {e}")
+
+        db.commit()
+        return action
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 6: POST-FIX MONITORING
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async def monitor_post_fix(self, incident: Incident, db: Session) -> bool:
+        """Monitor the cluster after remediation to verify fix stability."""
+        logger.info(f"👀 Step 6: Monitoring post-fix for Incident #{incident.id}")
+
+        incident.status = IncidentStatus.MONITORING
+        db.commit()
+
+        # Wait and check periodically
+        check_interval = 30  # seconds
+        total_checks = max(1, (settings.monitor_duration_minutes * 60) // check_interval)
+        issue_cleared = True
+
+        for i in range(total_checks):
+            await asyncio.sleep(check_interval)
+            logger.info(f"  Monitor check {i + 1}/{total_checks}...")
+
+            try:
+                pod_data = await self.mcp.get_pods(incident.namespace or "default")
+
+                # Check if the same resource is still in error
+                if incident.resource_name and incident.resource_name in pod_data:
+                    error_patterns = ["CrashLoopBackOff", "Error", "OOMKilled", "ImagePullBackOff"]
+                    for pattern in error_patterns:
+                        if pattern.lower() in pod_data.lower():
+                            # Check if the specific pod is still affected
+                            for line in pod_data.split("\n"):
+                                if incident.resource_name in line and pattern.lower() in line.lower():
+                                    issue_cleared = False
+                                    logger.warning(f"  ⚠️ Issue persists: {incident.resource_name} still shows {pattern}")
+                                    break
+            except Exception as e:
+                logger.warning(f"  Monitoring check failed: {e}")
+
+            if not issue_cleared:
+                break
+
+        if issue_cleared:
+            logger.info(f"  ✅ Post-fix monitoring passed — issue appears resolved.")
+        else:
+            logger.warning(f"  ❌ Post-fix monitoring failed — issue persists.")
+
+        return issue_cleared
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # Step 7: STATUS UPDATE
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    def update_status(self, incident: Incident, resolved: bool, db: Session):
+        """Final status update for the incident."""
+        logger.info(f"📋 Step 7: Updating status for Incident #{incident.id}")
+
+        if resolved:
+            incident.status = IncidentStatus.RESOLVED
+            incident.resolved_at = datetime.now(timezone.utc)
+            logger.info(f"  ✅ Incident #{incident.id} marked as RESOLVED.")
+        else:
+            incident.status = IncidentStatus.FAILED
+            logger.info(f"  ❌ Incident #{incident.id} marked as FAILED — requires manual intervention.")
+
+        db.commit()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # FULL PIPELINE EXECUTION
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async def run_cycle(self, dry_run: bool = False):
+        """Execute one full detection → resolution cycle."""
+        logger.info("=" * 60)
+        logger.info("🚀 Starting incident detection cycle...")
+        logger.info("=" * 60)
+
+        # Step 1: Detect
+        raw_incidents = await self.detect_incidents()
+
+        if not raw_incidents:
+            logger.info("✨ No incidents detected. Cluster looks healthy!")
+            return
+
+        db = SessionLocal()
+        try:
+            for raw_incident in raw_incidents:
+                try:
+                    # Step 2: Validate
+                    incident = await self.validate_incident(raw_incident, db)
+                    if not incident:
+                        continue  # duplicate or invalid
+
+                    # Step 3: Analyze (RCA)
+                    rca_result = await self.analyze_incident(incident, db)
+
+                    # Step 4: Store
+                    rca_report = self.store_rca(incident, rca_result, db)
+
+                    if dry_run:
+                        incident.status = IncidentStatus.RESOLVED
+                        incident.resolved_at = datetime.now(timezone.utc)
+                        db.commit()
+                        logger.info(f"  🏃 Dry run — skipping remediation for Incident #{incident.id}")
+                        continue
+
+                    # Step 5: Remediate
+                    action = await self.execute_remediation(incident, rca_result, db)
+
+                    # Step 6: Monitor (only if remediation was executed)
+                    if action and action.status == RemediationStatus.SUCCESS:
+                        resolved = await self.monitor_post_fix(incident, db)
+                    else:
+                        resolved = False
+
+                    # Step 7: Update status
+                    self.update_status(incident, resolved, db)
+
+                except Exception as e:
+                    logger.error(f"Pipeline error for incident '{raw_incident.get('title')}': {e}", exc_info=True)
+                    continue
+        finally:
+            db.close()
+
+        logger.info("=" * 60)
+        logger.info("🏁 Incident cycle complete.")
+        logger.info("=" * 60)
