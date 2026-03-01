@@ -284,6 +284,10 @@ def get_incident(incident_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
+import urllib.request
+import os
+from pathlib import Path
+
 @app.get("/api/incidents/{incident_id}/pdf")
 def download_incident_pdf(incident_id: int, db: Session = Depends(get_db)):
     """Generate and download a formal PDF report for the incident."""
@@ -299,29 +303,43 @@ def download_incident_pdf(incident_id: int, db: Session = Depends(get_db)):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
+    # --- Unicode Font Setup ---
+    # FPDF's default helvetica is latin-1 only and crashes on arrows like →
+    # Since we are on Windows, simply use the native Arial TrueType font for full unicode support
+    font_path = "C:\\Windows\\Fonts\\arial.ttf"
+    font_bold_path = "C:\\Windows\\Fonts\\arialbd.ttf"
+    
+    pdf.add_font("Arial", "", font_path)
+    pdf.add_font("Arial", "B", font_bold_path)
+    
+    # Helper to clean out any totally unprintable chars just in case
+    def sanitize(text):
+        if not text: return ""
+        return str(text)
+
     # Title
-    pdf.set_font("helvetica", style="B", size=16)
-    pdf.cell(0, 10, f"Root Cause Analysis Report: INC-{incident.id}", ln=True, align="L")
+    pdf.set_font("Arial", style="B", size=16)
+    pdf.cell(0, 10, sanitize(f"Root Cause Analysis Report: INC-{incident.id}"), ln=True, align="L")
     pdf.ln(5)
 
     # Metadata
-    pdf.set_font("helvetica", size=11)
+    pdf.set_font("Arial", size=11)
     date_str = incident.detected_at.strftime("%B %d, %Y")
     severity_str = incident.severity.name.capitalize() if hasattr(incident.severity, 'name') else str(incident.severity).capitalize()
     
-    pdf.cell(0, 6, f"Incident ID: INC-{incident.id}", ln=True)
-    pdf.cell(0, 6, f"Date: {date_str}", ln=True)
-    pdf.cell(0, 6, f"Prepared By: AI-Assisted SRE System", ln=True)
-    pdf.cell(0, 6, f"Severity: {severity_str}", ln=True)
-    pdf.cell(0, 6, f"Category: Resource Exhaustion (Kubernetes / JVM)", ln=True)
+    pdf.cell(0, 6, sanitize(f"Incident ID: INC-{incident.id}"), ln=True)
+    pdf.cell(0, 6, sanitize(f"Date: {date_str}"), ln=True)
+    pdf.cell(0, 6, sanitize(f"Prepared By: AI-Assisted SRE System"), ln=True)
+    pdf.cell(0, 6, sanitize(f"Severity: {severity_str}"), ln=True)
+    pdf.cell(0, 6, sanitize(f"Category: Resource Exhaustion (Kubernetes / JVM)"), ln=True)
     pdf.ln(10)
 
     if not rca:
-        pdf.set_font("helvetica", style="I", size=12)
+        pdf.set_font("Arial", style="I", size=12)
         pdf.cell(0, 10, "No structured Root Cause Analysis data is available for this incident yet.", ln=True)
         
         pdf_bytes = pdf.output()
-        return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=INC-{incident.id}_RCA_Report.pdf"})
+        return Response(content=bytes(pdf_bytes), media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=INC-{incident.id}_RCA_Report.pdf"})
 
     # Parse raw response robustly just like get_incident
     rem_cmd = ""
@@ -352,11 +370,11 @@ def download_incident_pdf(incident_id: int, db: Session = Depends(get_db)):
     def add_section(title, content):
         if not content:
             return
-        pdf.set_font("helvetica", style="B", size=12)
-        pdf.cell(0, 10, title, ln=True, border='B')
+        pdf.set_font("Arial", style="B", size=12)
+        pdf.cell(0, 10, sanitize(title), ln=True, border='B')
         pdf.ln(3)
-        pdf.set_font("helvetica", size=10)
-        pdf.multi_cell(0, 5, content)
+        pdf.set_font("Arial", size=10)
+        pdf.multi_cell(0, 5, sanitize(content))
         pdf.ln(8)
 
     # 1. Executive Summary
@@ -371,42 +389,43 @@ def download_incident_pdf(incident_id: int, db: Session = Depends(get_db)):
         add_section("3. Incident Timeline (UTC)", timeline_str)
         
     # 4. Root Cause Analysis
-    pdf.set_font("helvetica", style="B", size=12)
+    pdf.set_font("Arial", style="B", size=12)
     pdf.cell(0, 10, "4. Root Cause Analysis", ln=True, border='B')
     pdf.ln(3)
-    pdf.set_font("helvetica", style="B", size=10)
+    pdf.set_font("Arial", style="B", size=10)
     pdf.cell(0, 6, "Primary Root Cause", ln=True)
-    pdf.set_font("helvetica", size=10)
-    pdf.multi_cell(0, 5, rca.root_cause or "")
+    pdf.set_font("Arial", size=10)
+    pdf.multi_cell(0, 5, sanitize(rca.root_cause or ""))
     pdf.ln(2)
     
     conf = int((rca.confidence_score or 0) * 100)
     conf_level = "High" if conf >= 70 else ("Medium" if conf >= 40 else "Low")
-    pdf.cell(0, 6, f"Confidence Level: {rca.confidence_score or 0} ({conf_level})", ln=True)
+    pdf.cell(0, 6, sanitize(f"Confidence Level: {rca.confidence_score or 0} ({conf_level})"), ln=True)
     pdf.ln(2)
     
-    pdf.set_font("helvetica", style="B", size=10)
+    pdf.set_font("Arial", style="B", size=10)
     pdf.cell(0, 6, "Supporting Evidence", ln=True)
-    pdf.set_font("helvetica", size=10)
-    pdf.multi_cell(0, 5, rca.analysis or "")
+    pdf.set_font("Arial", size=10)
+    pdf.multi_cell(0, 5, sanitize(rca.analysis or ""))
     pdf.ln(8)
     
     # 5. Impact Assessment
     add_section("5. Impact Assessment", imp_ass or "No impact assessment provided.")
     
     # 6. Resolution Actions
-    pdf.set_font("helvetica", style="B", size=12)
+    pdf.set_font("Arial", style="B", size=12)
     pdf.cell(0, 10, "6. Resolution Actions (Automated)", ln=True, border='B')
     pdf.ln(3)
-    pdf.set_font("helvetica", size=10)
-    pdf.multi_cell(0, 5, res_act or "No resolution actions logged.")
+    pdf.set_font("Arial", size=10)
+    pdf.multi_cell(0, 5, sanitize(res_act or "No resolution actions logged."))
     if rem_cmd:
         pdf.ln(2)
-        pdf.set_font("helvetica", style="B", size=10)
+        pdf.set_font("Arial", style="B", size=10)
         pdf.cell(0, 6, "Automated Remediation Command executed:", ln=True)
-        pdf.set_font("courier", size=9)
+        # Use DejaVu instead of courier to maintain strict unicode compatibility
+        pdf.set_font("Arial", size=9)
         pdf.set_fill_color(240, 240, 240)
-        pdf.multi_cell(0, 6, f"$ kubectl {rem_cmd}", fill=True)
+        pdf.multi_cell(0, 6, sanitize(f"$ kubectl {rem_cmd}"), fill=True)
     pdf.ln(8)
     
     # 7. Preventive Measures
