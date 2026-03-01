@@ -24,14 +24,22 @@ class RCAResult(BaseModel):
     analysis: str = Field(description="Detailed analysis explaining the issue")
     severity_assessment: str = Field(description="Critical / High / Medium / Low")
     recommendations: List[str] = Field(description="Ordered list of recommended actions")
-    immediate_actions: List[str] = Field(description="Actions that can be taken immediately")
-    preventive_measures: List[str] = Field(description="Long-term preventive steps")
     confidence_score: float = Field(description="Confidence in the analysis, 0.0 to 1.0")
     affected_components: List[str] = Field(description="List of affected Kubernetes resources")
     estimated_impact: str = Field(description="Impact assessment on the system")
     remediation_command: str = Field(default="", description="Exact kubectl command to remediate the issue")
     remediation_risk: str = Field(default="medium", description="Risk level of running the command: low/medium/high")
     remediation_explanation: str = Field(default="", description="Why this command will fix the issue")
+    
+    # New highly-structured RCA format fields
+    executive_summary: str = Field(default="", description="Executive Summary")
+    incident_detection: str = Field(default="", description="Incident Detection details")
+    incident_timeline: List[str] = Field(default_factory=list, description="Incident Timeline")
+    impact_assessment: str = Field(default="", description="Impact Assessment")
+    resolution_actions: str = Field(default="", description="Resolution Actions")
+    preventive_measures: str = Field(default="", description="Preventive Measures")
+    lessons_learned: str = Field(default="", description="Lessons Learned")
+    final_summary: str = Field(default="", description="Final Summary")
 
 
 # ─── System Prompt ───
@@ -62,15 +70,22 @@ For the remediation_command field:
 
 IMPORTANT: Always respond with valid JSON matching this exact schema:
 {
+    "executive_summary": "string — high-level summary of what happened, root cause, and business impact",
+    "incident_detection": "string — how it was detected and trigger signals",
+    "incident_timeline": ["list of strings formatted as 'HH:MM:SS UTC - Event description'"],
+    "impact_assessment": "string — business and user impact assessment",
+    "resolution_actions": "string — what automated/manual actions were or will be taken",
+    "preventive_measures": "string — immediate, short, and long-term measures",
+    "lessons_learned": "string — what went well, what needs improvement",
+    "final_summary": "string — closing summary of the incident",
+
     "root_cause": "string — clear one-line root cause",
-    "analysis": "string — detailed multi-paragraph analysis",
+    "analysis": "string — detailed technical analysis (can be same as root_cause_analysis)",
     "severity_assessment": "Critical | High | Medium | Low",
     "recommendations": ["ordered list of recommendations"],
-    "immediate_actions": ["actions that can be executed right now"],
-    "preventive_measures": ["long-term prevention steps"],
     "confidence_score": 0.0 to 1.0,
     "affected_components": ["list of affected k8s resources"],
-    "estimated_impact": "string — impact description",
+    "estimated_impact": "string — short impact description (or leave empty if using impact_assessment)",
     "remediation_command": "exact kubectl command to fix the issue (without kubectl prefix)",
     "remediation_risk": "low | medium | high",
     "remediation_explanation": "brief explanation of why this command will fix the issue"

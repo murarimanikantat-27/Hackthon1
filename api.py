@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fpdf import FPDF
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
@@ -65,6 +66,15 @@ class RCADetail(BaseModel):
     remediation_command: Optional[str] = ""
     remediation_risk: Optional[str] = ""
     remediation_explanation: Optional[str] = ""
+    
+    executive_summary: Optional[str] = ""
+    incident_detection: Optional[str] = ""
+    incident_timeline: Optional[list] = []
+    impact_assessment: Optional[str] = ""
+    resolution_actions: Optional[str] = ""
+    preventive_measures: Optional[str] = ""
+    lessons_learned: Optional[str] = ""
+    final_summary: Optional[str] = ""
 
     class Config:
         from_attributes = True
@@ -194,15 +204,32 @@ def get_incident(incident_id: int, db: Session = Depends(get_db)):
     # Build RCA reports with LLM-generated remediation command
     rca_details = []
     for r in incident.rca_reports:
-        rem_cmd = ""
-        rem_risk = ""
-        rem_expl = ""
+        rem_cmd, rem_risk, rem_expl = "", "", ""
+        exec_sum, inc_det, inc_time = "", "", []
+        imp_ass, res_act, prev_mea, less_lrn, fin_sum = "", "", "", "", ""
+
         if r.raw_response:
             try:
                 raw = json.loads(r.raw_response)
                 rem_cmd = raw.get("remediation_command", "")
                 rem_risk = raw.get("remediation_risk", "")
                 rem_expl = raw.get("remediation_explanation", "")
+                
+                exec_sum = raw.get("executive_summary", "")
+                inc_det = raw.get("incident_detection", "")
+                inc_time = raw.get("incident_timeline", [])
+                
+                # Helper to gracefully parse either lists or strings from LLM
+                def _to_str(val):
+                    if isinstance(val, list):
+                        return "\n".join(f"- {v}" for v in val)
+                    return str(val) if val else ""
+
+                imp_ass = _to_str(raw.get("impact_assessment", ""))
+                res_act = _to_str(raw.get("resolution_actions", ""))
+                prev_mea = _to_str(raw.get("preventive_measures", ""))
+                less_lrn = _to_str(raw.get("lessons_learned", ""))
+                fin_sum = _to_str(raw.get("final_summary", ""))
             except (json.JSONDecodeError, TypeError):
                 pass
         rca_details.append(RCADetail(
@@ -216,33 +243,187 @@ def get_incident(incident_id: int, db: Session = Depends(get_db)):
             remediation_command=rem_cmd,
             remediation_risk=rem_risk,
             remediation_explanation=rem_expl,
+            executive_summary=exec_sum,
+            incident_detection=inc_det,
+            incident_timeline=inc_time,
+            impact_assessment=imp_ass,
+            resolution_actions=res_act,
+            preventive_measures=prev_mea,
+            lessons_learned=less_lrn,
+            final_summary=fin_sum,
         ))
 
-    return IncidentFull(
-        incident=IncidentSummary(
-            id=incident.id,
-            title=incident.title,
-            severity=incident.severity.value if incident.severity else "medium",
-            namespace=incident.namespace or "default",
-            resource_type=incident.resource_type,
-            resource_name=incident.resource_name,
-            status=incident.status.value if incident.status else "detected",
-            detected_at=incident.detected_at,
-            resolved_at=incident.resolved_at,
-        ),
-        rca_reports=rca_details,
-        remediation_actions=[
-            RemediationDetail(
-                id=a.id,
-                action_type=a.action_type,
-                command=a.command,
-                result=a.result,
-                status=a.status.value if a.status else "pending",
-                executed_at=a.executed_at,
-            )
-            for a in incident.remediation_actions
-        ],
-    )
+    try:
+        return IncidentFull(
+            incident=IncidentSummary(
+                id=incident.id,
+                title=incident.title,
+                severity=incident.severity.value if incident.severity else "medium",
+                namespace=incident.namespace or "default",
+                resource_type=incident.resource_type,
+                resource_name=incident.resource_name,
+                status=incident.status.value if incident.status else "detected",
+                detected_at=incident.detected_at,
+                resolved_at=incident.resolved_at,
+            ),
+            rca_reports=rca_details,
+            remediation_actions=[
+                RemediationDetail(
+                    id=a.id,
+                    action_type=a.action_type,
+                    command=a.command,
+                    result=a.result,
+                    status=a.status.value if a.status else "pending",
+                    executed_at=a.executed_at,
+                )
+                for a in incident.remediation_actions
+            ],
+        )
+    except Exception as e:
+        alert_logger.error(f"Error fetching incident: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+
+@app.get("/api/incidents/{incident_id}/pdf")
+def download_incident_pdf(incident_id: int, db: Session = Depends(get_db)):
+    """Generate and download a formal PDF report for the incident."""
+    incident = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    # Pick the latest RCA report
+    rca = incident.rca_reports[0] if incident.rca_reports else None
+    
+    # Initialize PDF
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Title
+    pdf.set_font("helvetica", style="B", size=16)
+    pdf.cell(0, 10, f"Root Cause Analysis Report: INC-{incident.id}", ln=True, align="L")
+    pdf.ln(5)
+
+    # Metadata
+    pdf.set_font("helvetica", size=11)
+    date_str = incident.detected_at.strftime("%B %d, %Y")
+    severity_str = incident.severity.name.capitalize() if hasattr(incident.severity, 'name') else str(incident.severity).capitalize()
+    
+    pdf.cell(0, 6, f"Incident ID: INC-{incident.id}", ln=True)
+    pdf.cell(0, 6, f"Date: {date_str}", ln=True)
+    pdf.cell(0, 6, f"Prepared By: AI-Assisted SRE System", ln=True)
+    pdf.cell(0, 6, f"Severity: {severity_str}", ln=True)
+    pdf.cell(0, 6, f"Category: Resource Exhaustion (Kubernetes / JVM)", ln=True)
+    pdf.ln(10)
+
+    if not rca:
+        pdf.set_font("helvetica", style="I", size=12)
+        pdf.cell(0, 10, "No structured Root Cause Analysis data is available for this incident yet.", ln=True)
+        
+        pdf_bytes = pdf.output()
+        return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=INC-{incident.id}_RCA_Report.pdf"})
+
+    # Parse raw response robustly just like get_incident
+    rem_cmd = ""
+    exec_sum, inc_det, inc_time = "", "", []
+    imp_ass, res_act, prev_mea, less_lrn, fin_sum = "", "", "", "", ""
+    if rca.raw_response:
+        try:
+            raw = json.loads(rca.raw_response)
+            rem_cmd = raw.get("remediation_command", "")
+            exec_sum = raw.get("executive_summary", "")
+            inc_det = raw.get("incident_detection", "")
+            inc_time = raw.get("incident_timeline", [])
+            
+            def _to_str(val):
+                if isinstance(val, list):
+                    return "\n".join(f"- {v}" for v in val)
+                return str(val) if val else ""
+            
+            imp_ass = _to_str(raw.get("impact_assessment", ""))
+            res_act = _to_str(raw.get("resolution_actions", ""))
+            prev_mea = _to_str(raw.get("preventive_measures", ""))
+            less_lrn = _to_str(raw.get("lessons_learned", ""))
+            fin_sum = _to_str(raw.get("final_summary", ""))
+        except Exception:
+            pass
+
+    # Helper function for sections
+    def add_section(title, content):
+        if not content:
+            return
+        pdf.set_font("helvetica", style="B", size=12)
+        pdf.cell(0, 10, title, ln=True, border='B')
+        pdf.ln(3)
+        pdf.set_font("helvetica", size=10)
+        pdf.multi_cell(0, 5, content)
+        pdf.ln(8)
+
+    # 1. Executive Summary
+    add_section("1. Executive Summary", exec_sum or "No executive summary available.")
+    
+    # 2. Incident Detection
+    add_section("2. Incident Detection", inc_det or "No detection details provided.")
+    
+    # 3. Incident Timeline
+    if inc_time:
+        timeline_str = "\n".join(f"• {t}" for t in inc_time)
+        add_section("3. Incident Timeline (UTC)", timeline_str)
+        
+    # 4. Root Cause Analysis
+    pdf.set_font("helvetica", style="B", size=12)
+    pdf.cell(0, 10, "4. Root Cause Analysis", ln=True, border='B')
+    pdf.ln(3)
+    pdf.set_font("helvetica", style="B", size=10)
+    pdf.cell(0, 6, "Primary Root Cause", ln=True)
+    pdf.set_font("helvetica", size=10)
+    pdf.multi_cell(0, 5, rca.root_cause or "")
+    pdf.ln(2)
+    
+    conf = int((rca.confidence_score or 0) * 100)
+    conf_level = "High" if conf >= 70 else ("Medium" if conf >= 40 else "Low")
+    pdf.cell(0, 6, f"Confidence Level: {rca.confidence_score or 0} ({conf_level})", ln=True)
+    pdf.ln(2)
+    
+    pdf.set_font("helvetica", style="B", size=10)
+    pdf.cell(0, 6, "Supporting Evidence", ln=True)
+    pdf.set_font("helvetica", size=10)
+    pdf.multi_cell(0, 5, rca.analysis or "")
+    pdf.ln(8)
+    
+    # 5. Impact Assessment
+    add_section("5. Impact Assessment", imp_ass or "No impact assessment provided.")
+    
+    # 6. Resolution Actions
+    pdf.set_font("helvetica", style="B", size=12)
+    pdf.cell(0, 10, "6. Resolution Actions (Automated)", ln=True, border='B')
+    pdf.ln(3)
+    pdf.set_font("helvetica", size=10)
+    pdf.multi_cell(0, 5, res_act or "No resolution actions logged.")
+    if rem_cmd:
+        pdf.ln(2)
+        pdf.set_font("helvetica", style="B", size=10)
+        pdf.cell(0, 6, "Automated Remediation Command executed:", ln=True)
+        pdf.set_font("courier", size=9)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.multi_cell(0, 6, f"$ kubectl {rem_cmd}", fill=True)
+    pdf.ln(8)
+    
+    # 7. Preventive Measures
+    add_section("7. Preventive Measures", prev_mea or "No preventive measures recommended.")
+    
+    # 8. Lessons Learned
+    add_section("8. Lessons Learned", less_lrn or "No lessons learned recorded.")
+    
+    # 9. Final Summary
+    add_section("9. Final Summary", fin_sum or "No final summary available.")
+
+    # Return as response
+    pdf_bytes = pdf.output()
+    headers = {
+        "Content-Disposition": f"attachment; filename=INC-{incident.id}_RCA_Report.pdf"
+    }
+    return Response(content=bytes(pdf_bytes), media_type="application/pdf", headers=headers)
 
 
 @app.post("/api/incidents/{incident_id}/remediate")

@@ -10,6 +10,9 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
+        integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         :root {
             --bg-primary: #0a0e1a;
@@ -961,6 +964,7 @@
 
         // ─── Render Detail ───
         function renderDetail(data) {
+            window.currentIncidentData = data; // store globally for PDF export
             const panel = document.getElementById('detail-panel');
             const inc = data.incident;
             const rca = data.rca_reports[0];
@@ -986,9 +990,35 @@
                 const confPct = (rca.confidence_score * 100).toFixed(0);
                 const confClass = rca.confidence_score >= 0.7 ? 'high' : rca.confidence_score >= 0.4 ? 'medium' : 'low';
 
+                if (rca.executive_summary) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">📊 1. Executive Summary</div>
+                            <div class="rca-text" style="white-space: pre-wrap;">${escapeHtml(rca.executive_summary)}</div>
+                        </div>`;
+                }
+
+                if (rca.incident_detection) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">🔍 2. Incident Detection</div>
+                            <div class="rca-text" style="white-space: pre-wrap;">${escapeHtml(rca.incident_detection)}</div>
+                        </div>`;
+                }
+
+                if (rca.incident_timeline && rca.incident_timeline.length > 0) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">⏱️ 3. Incident Timeline (UTC)</div>
+                            <ul class="recommendation-list">
+                                ${rca.incident_timeline.map(t => `<li>${escapeHtml(t)}</li>`).join('')}
+                            </ul>
+                        </div>`;
+                }
+
                 html += `
                     <div class="detail-section">
-                        <div class="detail-section-title">🧠 Root Cause Analysis
+                        <div class="detail-section-title">🧠 ${rca.executive_summary ? '4. ' : ''}Root Cause Analysis
                             <span style="margin-left:auto;font-size:12px;font-weight:500;color:var(--text-secondary)">
                                 Confidence: ${confPct}%
                             </span>
@@ -999,27 +1029,32 @@
                         <div style="margin-top:16px">
                             <div class="rca-root-cause">${escapeHtml(rca.root_cause)}</div>
                         </div>
-                        <div class="rca-text" style="margin-top:12px">${escapeHtml(rca.analysis || '')}</div>
+                        <div class="rca-text" style="margin-top:12px;white-space: pre-wrap;">${escapeHtml(rca.analysis || '')}</div>
                     </div>`;
 
-                // Recommendations
-                if (rca.recommendations && rca.recommendations.length > 0) {
+                if (rca.impact_assessment) {
                     html += `
                         <div class="detail-section">
-                            <div class="detail-section-title">💡 Recommendations</div>
-                            <ul class="recommendation-list">
-                                ${rca.recommendations.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
-                            </ul>
+                            <div class="detail-section-title">💥 5. Impact Assessment</div>
+                            <div class="rca-text" style="white-space: pre-wrap;">${escapeHtml(rca.impact_assessment)}</div>
                         </div>`;
                 }
 
-                // LLM-Suggested Remediation Command
+                if (rca.resolution_actions) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">⚡ 6. Resolution Actions</div>
+                            <div class="rca-text" style="white-space: pre-wrap;">${escapeHtml(rca.resolution_actions)}</div>
+                        </div>`;
+                }
+
+                // AI Suggested Command (inject after Resolution Actions)
                 if (rca.remediation_command) {
                     const riskColor = rca.remediation_risk === 'low' ? 'var(--accent-emerald)' :
                         rca.remediation_risk === 'high' ? 'var(--accent-rose)' : 'var(--accent-amber)';
                     html += `
                         <div class="detail-section">
-                            <div class="detail-section-title">🤖 AI-Suggested Remediation
+                            <div class="detail-section-title">🤖 AI-Suggested Remediation Command
                                 <span style="margin-left:auto;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:600;
                                     background:${riskColor}20;color:${riskColor};border:1px solid ${riskColor}40">
                                     Risk: ${escapeHtml(rca.remediation_risk || 'medium')}
@@ -1033,6 +1068,41 @@
                                     💡 <strong>Why:</strong> ${escapeHtml(rca.remediation_explanation)}
                                 </p>
                             ` : ''}
+                        </div>`;
+                }
+
+                // Fallback Recommendations if no new structured data
+                if ((!rca.resolution_actions && !rca.preventive_measures) && rca.recommendations && rca.recommendations.length > 0) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">💡 Recommendations</div>
+                            <ul class="recommendation-list">
+                                ${rca.recommendations.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                            </ul>
+                        </div>`;
+                }
+
+                if (rca.preventive_measures) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">🛡️ 7. Preventive Measures</div>
+                            <div class="rca-text" style="white-space: pre-wrap;">${escapeHtml(rca.preventive_measures)}</div>
+                        </div>`;
+                }
+
+                if (rca.lessons_learned) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">🎓 8. Lessons Learned</div>
+                            <div class="rca-text" style="white-space: pre-wrap;">${escapeHtml(rca.lessons_learned)}</div>
+                        </div>`;
+                }
+
+                if (rca.final_summary) {
+                    html += `
+                        <div class="detail-section">
+                            <div class="detail-section-title">📝 9. Final Summary</div>
+                            <div class="rca-text" style="white-space: pre-wrap;">${escapeHtml(rca.final_summary)}</div>
                         </div>`;
                 }
             } else {
@@ -1057,25 +1127,34 @@
                         </div>
                         ${a.command ? `<div class="action-command">$ ${escapeHtml(a.command)}</div>` : ''}
                         ${a.result ? `<p style="font-size:12px;color:var(--text-muted);margin-top:6px">${escapeHtml(a.result)}</p>` : ''}
-                    </div>
-                `).join('');
+                    </div>`).join('');
             } else {
                 html += '<p style="color:var(--text-muted);font-size:13px">No remediation actions taken yet.</p>';
             }
 
+            html += `
+                <div style="margin-top:16px;text-align:right">
+                    <button class="remediate-btn" onclick="downloadRcaPdf(${inc.id})" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);margin-right:12px;">
+                        📥 Download PDF
+                    </button>`;
+
             // Manual approval button
             if (inc.status !== 'resolved' && rca) {
                 html += `
-                    <div style="margin-top:16px;text-align:right">
-                        <button class="remediate-btn" onclick="triggerRemediation(${inc.id})" id="remediate-btn-${inc.id}">
-                            ✅ Approve & Execute Remediation
-                        </button>
-                    </div>`;
+                    <button class="remediate-btn" onclick="triggerRemediation(${inc.id})" id="remediate-btn-${inc.id}">
+                        ✅ Approve & Execute Remediation
+                    </button>`;
             }
 
-            html += '</div>';
+            html += '</div></div>';
 
             panel.innerHTML = html;
+        }
+
+        // ─── Download PDF ───
+        function downloadRcaPdf(incidentId) {
+            // Production approach: hit the backend API to generate and stream the secure, templated PDF
+            window.open(`/api/incidents/${incidentId}/pdf`, '_blank');
         }
 
         // ─── Trigger Remediation ───

@@ -500,32 +500,16 @@ class EmailAlertMonitor:
                     for inc_id in incident_ids:
                         asyncio.create_task(_run_rca_for_incident(inc_id))
 
-                    # 2. Enter IMAP IDLE mode
-                    if shutdown_event.is_set():
-                        break
-
-                    logger.info("⏳ Waiting for new alerts (IMAP IDLE)...")
-                    
-                    # We run the blocking IDLE command in a background thread 
-                    # so we don't block the asyncio event loop
-                    def _wait_for_idle():
-                        self._mail.send(b"IDLE\r\n")
-                        # Wait for a response (any unseen message or network event)
-                        response = self._mail.readline()
-                        # Send DONE to exit IDLE state
-                        self._mail.send(b"DONE\r\n")
-                        self._mail.readline()
-                        return response
-
-                    # Run blocking idle in executor, but allow timeout/cancellation
-                    try:
-                        await asyncio.wait_for(
-                            asyncio.to_thread(_wait_for_idle),
-                            timeout=self.poll_interval # Wake up periodically just in case
-                        )
-                    except asyncio.TimeoutError:
-                        pass # Normal timeout, just loop around and check/idle again
-                    
+                    # 2. Wait for a short interval before checking again
+                    # We use a 5-second fast-poll which gives near-instant results
+                    # without the complexity and unreliability of raw IMAP IDLE sockets
+                    await asyncio.wait_for(
+                        shutdown_event.wait(),
+                        timeout=5,
+                    )
+                    break
+                except asyncio.TimeoutError:
+                    pass # Loop around and poll again
                 except Exception as e:
                     logger.error(f"Email monitor error: {e}", exc_info=True)
                     # Reconnect on error
