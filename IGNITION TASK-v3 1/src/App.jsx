@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
+import HomePage from './components/HomePage';
 import MainContent from './components/MainContent';
 import Footer from './components/Footer';
 import Dashboard from './components/Dashboard';
@@ -9,6 +10,7 @@ function App() {
   const [isDark, setIsDark] = useState(false);
   const [dashboardData, setDashboardData] = useState(null);
   const [showLoading, setShowLoading] = useState(false);
+  const [showHomePage, setShowHomePage] = useState(true);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -31,6 +33,10 @@ function App() {
     }
   };
 
+  const handleContinue = () => {
+    setShowHomePage(false);
+  };
+
   const handleFileUpload = (data) => {
     setShowLoading(true);
     setDashboardData(data);
@@ -44,6 +50,16 @@ function App() {
     setDashboardData(null);
     setShowLoading(false);
   };
+
+  // Show home page
+  if (showHomePage) {
+    return (
+      <div className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen flex flex-col overflow-x-hidden pt-16">
+        <Header onThemeToggle={toggleTheme} isDark={isDark} />
+        <HomePage onContinue={handleContinue} />
+      </div>
+    );
+  }
 
   // Show loading animation
   if (showLoading) {
