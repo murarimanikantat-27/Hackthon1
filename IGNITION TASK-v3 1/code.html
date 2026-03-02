@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html class="scroll-smooth" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ShellKode | File Upload Risk Predictor</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#00AEEF",
+                        "navy-deep": "#00224D",
+                        "background-light": "#F8FAFC",
+                        "background-dark": "#0B0F1A",
+                    },
+                    fontFamily: {
+                        display: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.75rem",
+                    },
+                },
+            },
+        };
+    </script>
+<style type="text/tailwindcss">
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .glass-effect {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .shellkode-logo-font {
+            font-family: 'Inter', sans-serif;
+            letter-spacing: -0.025em;
+        }
+        .upload-area:hover .upload-icon {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen flex flex-col">
+<header class="sticky top-0 z-50 bg-white/80 dark:bg-background-dark/80 border-b border-slate-200 dark:border-slate-800 glass-effect">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex justify-between items-center h-20">
+<div class="flex-shrink-0 flex items-center">
+<div class="flex items-center gap-3">
+<div class="relative w-9 h-9">
+<svg class="w-full h-full" fill="none" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+<path d="M25 30L45 50L25 70" stroke="#00224D" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"></path>
+<path d="M75 30L55 50L75 70" stroke="#00AEEF" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"></path>
+</svg>
+</div>
+<div class="flex items-center shellkode-logo-font">
+<span class="text-2xl font-bold text-navy-deep dark:text-white">shell</span>
+<span class="text-2xl font-bold text-navy-deep dark:text-white">&lt;</span>
+<span class="text-2xl font-bold text-primary">ode</span>
+</div>
+</div>
+</div>
+<nav class="hidden md:flex space-x-8">
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary font-medium transition-colors" href="#">Platform</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary font-medium transition-colors" href="#">Solutions</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary font-medium transition-colors" href="#">Documentation</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-primary dark:hover:text-primary font-medium transition-colors" href="#">Support</a>
+</nav>
+<div class="flex items-center space-x-4">
+<button class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" id="themeToggle">
+<span class="material-symbols-outlined block dark:hidden">dark_mode</span>
+<span class="material-symbols-outlined hidden dark:block">light_mode</span>
+</button>
+<button class="bg-navy-deep text-white px-5 py-2.5 rounded-lg font-semibold hover:opacity-90 transition-all text-sm">
+                    Contact Sales
+                </button>
+</div>
+</div>
+</div>
+</header>
+<main class="flex-grow flex items-center py-12">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+<div class="max-w-4xl mx-auto flex flex-col items-center">
+<div class="flex justify-center w-full">
+<div class="upload-area group relative flex flex-col items-center justify-center p-16 bg-white dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2.5rem] shadow-xl shadow-slate-200/50 dark:shadow-none hover:border-primary dark:hover:border-primary transition-all duration-300 w-full max-w-2xl cursor-pointer">
+<div class="upload-icon transition-transform duration-300 mb-8 bg-primary/5 dark:bg-primary/10 p-8 rounded-full">
+<span class="material-symbols-outlined text-7xl text-primary">cloud_upload</span>
+</div>
+<h2 class="text-3xl font-extrabold text-navy-deep dark:text-white mb-3">Upload Manifests</h2>
+<p class="text-slate-500 dark:text-slate-400 mb-10 text-center text-lg max-w-md">
+                        Drag and drop your configuration files here to analyze deployment risks in real-time.
+                    </p>
+<label class="cursor-pointer group/btn">
+<span class="bg-navy-deep dark:bg-primary text-white px-10 py-4 rounded-xl font-bold hover:opacity-90 transition-all flex items-center gap-3 text-lg shadow-lg shadow-navy-deep/20 dark:shadow-primary/20">
+<span class="material-symbols-outlined">upload_file</span>
+                            Choose File
+                        </span>
+<input class="hidden" type="file"/>
+</label>
+<div class="mt-10 flex flex-col items-center gap-4">
+<p class="text-xs text-slate-400 uppercase tracking-[0.2em] font-semibold">Accepted Formats</p>
+<div class="flex gap-3">
+<span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">YAML</span>
+<span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">JSON</span>
+<span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">TOML</span>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-12 flex items-center gap-8 opacity-50">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-sm">verified_user</span>
+<span class="text-xs font-medium uppercase tracking-widest text-slate-500 dark:text-slate-400">Secure Transfer</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-sm">bolt</span>
+<span class="text-xs font-medium uppercase tracking-widest text-slate-500 dark:text-slate-400">Instant Analysis</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-sm">visibility_off</span>
+<span class="text-xs font-medium uppercase tracking-widest text-slate-500 dark:text-slate-400">Private &amp; Encrypted</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+<footer class="bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 py-12">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-12 md:gap-8">
+<div class="col-span-1 md:col-span-2">
+<div class="flex items-center gap-3 mb-6">
+<div class="relative w-8 h-8">
+<svg class="w-full h-full" fill="none" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+<path d="M25 30L45 50L25 70" stroke="#00224D" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"></path>
+<path d="M75 30L55 50L75 70" stroke="#00AEEF" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"></path>
+</svg>
+</div>
+<div class="flex items-center shellkode-logo-font">
+<span class="text-xl font-bold text-navy-deep dark:text-white">shell</span>
+<span class="text-xl font-bold text-navy-deep dark:text-white">&lt;</span>
+<span class="text-xl font-bold text-primary">ode</span>
+</div>
+</div>
+<p class="text-slate-500 dark:text-slate-400 max-w-sm">
+                    Empowering engineering teams with AI-driven insights to build, deploy, and scale cloud infrastructure with maximum security.
+                </p>
+</div>
+<div>
+<h4 class="text-navy-deep dark:text-white font-bold mb-4 uppercase text-xs tracking-widest">Resources</h4>
+<ul class="space-y-2 text-sm text-slate-500 dark:text-slate-400">
+<li><a class="hover:text-primary transition-colors" href="#">Documentation</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">AI Model Insights</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Community</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Status</a></li>
+</ul>
+</div>
+<div>
+<h4 class="text-navy-deep dark:text-white font-bold mb-4 uppercase text-xs tracking-widest">Legal</h4>
+<ul class="space-y-2 text-sm text-slate-500 dark:text-slate-400">
+<li><a class="hover:text-primary transition-colors" href="#">Privacy Policy</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Terms of Service</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Security</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Compliance</a></li>
+</ul>
+</div>
+</div>
+<div class="mt-12 pt-8 border-t border-slate-100 dark:border-slate-900 flex flex-col md:flex-row justify-between items-center text-sm text-slate-400">
+<p>© 2024 ShellKode Inc. All rights reserved.</p>
+<div class="flex space-x-6 mt-4 md:mt-0">
+<a class="hover:text-primary transition-colors" href="#">Twitter</a>
+<a class="hover:text-primary transition-colors" href="#">LinkedIn</a>
+<a class="hover:text-primary transition-colors" href="#">GitHub</a>
+</div>
+</div>
+</div>
+</footer>
+<script>
+    const themeToggle = document.getElementById('themeToggle');
+    const htmlElement = document.documentElement;
+    if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        htmlElement.classList.add('dark');
+    } else {
+        htmlElement.classList.remove('dark');
+    }
+    themeToggle.addEventListener('click', () => {
+        if (htmlElement.classList.contains('dark')) {
+            htmlElement.classList.remove('dark');
+            localStorage.theme = 'light';
+        } else {
+            htmlElement.classList.add('dark');
+            localStorage.theme = 'dark';
+        }
+    });
+</script>
+
+</body></html>

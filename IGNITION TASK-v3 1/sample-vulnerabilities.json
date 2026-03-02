@@ -1,0 +1,86 @@
+{
+  "scanDate": "2024-02-28",
+  "projectName": "ShellKode Application",
+  "vulnerabilities": [
+    {
+      "id": "CVE-2024-1234",
+      "severity": "critical",
+      "title": "Remote Code Execution in Express.js",
+      "description": "A critical vulnerability allowing remote code execution",
+      "package": "express",
+      "version": "4.17.1",
+      "fixAvailable": true,
+      "status": "Open"
+    },
+    {
+      "id": "CVE-2024-5678",
+      "severity": "high",
+      "title": "SQL Injection in Database Driver",
+      "description": "SQL injection vulnerability in mysql driver",
+      "package": "mysql",
+      "version": "2.18.1",
+      "fixAvailable": true,
+      "status": "Open"
+    },
+    {
+      "id": "CVE-2024-9012",
+      "severity": "high",
+      "title": "Cross-Site Scripting (XSS) Vulnerability",
+      "description": "XSS vulnerability in sanitization library",
+      "package": "sanitize-html",
+      "version": "1.27.5",
+      "fixAvailable": false,
+      "status": "Open"
+    },
+    {
+      "id": "CVE-2024-3456",
+      "severity": "medium",
+      "title": "Path Traversal in File Upload",
+      "description": "Path traversal vulnerability in multer",
+      "package": "multer",
+      "version": "1.4.2",
+      "fixAvailable": true,
+      "status": "Fix Available"
+    },
+    {
+      "id": "CVE-2024-7890",
+      "severity": "medium",
+      "title": "Insecure Deserialization",
+      "description": "Insecure deserialization in node-serialize",
+      "package": "node-serialize",
+      "version": "0.0.4",
+      "fixAvailable": false,
+      "status": "Open"
+    },
+    {
+      "id": "CVE-2024-2468",
+      "severity": "low",
+      "title": "Information Disclosure",
+      "description": "Minor information disclosure in debug module",
+      "package": "debug",
+      "version": "2.6.9",
+      "fixAvailable": true,
+      "status": "Fix Available"
+    },
+    {
+      "id": "CVE-2024-1357",
+      "severity": "low",
+      "title": "Denial of Service (DoS)",
+      "description": "DoS vulnerability in lodash",
+      "package": "lodash",
+      "version": "4.17.19",
+      "fixAvailable": true,
+      "status": "fixed"
+    },
+    {
+      "id": "CVE-2024-8642",
+      "severity": "critical",
+      "title": "Authentication Bypass",
+      "description": "Critical authentication bypass in jsonwebtoken",
+      "package": "jsonwebtoken",
+      "version": "8.5.1",
+      "fixAvailable": true,
+      "status": "Open"
+    }
+  ]
+}

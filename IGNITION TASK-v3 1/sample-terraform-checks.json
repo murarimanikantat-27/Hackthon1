@@ -1,0 +1,108 @@
+{
+  "check_type": "terraform",
+  "scanDate": "2024-03-01",
+  "projectName": "Terraform Infrastructure",
+  "results": {
+    "passed_checks": [
+      {
+        "check_id": "CKV_AWS_274",
+        "bc_check_id": "BC_AWS_IAM_78",
+        "check_name": "Disallow IAM roles, users, and groups from using the AWS AdministratorAccess policy",
+        "check_result": {
+          "result": "PASSED"
+        },
+        "file_path": "/access-server.tf",
+        "resource": "aws_iam_role.access_server_role",
+        "severity": "low",
+        "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/bc-aws-274"
+      },
+      {
+        "check_id": "CKV_AWS_158",
+        "bc_check_id": "BC_AWS_GENERAL_73",
+        "check_name": "Ensure that CloudWatch Log Group is encrypted by KMS",
+        "check_result": {
+          "result": "PASSED"
+        },
+        "file_path": "/cloudwatch.tf",
+        "resource": "aws_cloudwatch_log_group.app_logs",
+        "severity": "low",
+        "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/bc-aws-158"
+      }
+    ],
+    "failed_checks": [
+      {
+        "check_id": "CKV_AWS_18",
+        "bc_check_id": "BC_AWS_S3_13",
+        "check_name": "Ensure the S3 bucket has access logging enabled",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/s3-buckets.tf",
+        "resource": "aws_s3_bucket.data_bucket",
+        "severity": "critical",
+        "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/s3-policies/s3-13-enable-logging"
+      },
+      {
+        "check_id": "CKV_AWS_144",
+        "bc_check_id": "BC_AWS_NETWORKING_31",
+        "check_name": "Ensure that S3 bucket has cross-region replication enabled",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/s3-buckets.tf",
+        "resource": "aws_s3_bucket.backup_bucket",
+        "severity": "high",
+        "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-networking-policies/bc-aws-144"
+      },
+      {
+        "check_id": "CKV_AWS_79",
+        "bc_check_id": "BC_AWS_GENERAL_31",
+        "check_name": "Ensure Instance Metadata Service Version 1 is not enabled",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/ec2-instances.tf",
+        "resource": "aws_instance.web_server",
+        "severity": "high",
+        "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/bc-aws-79"
+      },
+      {
+        "check_id": "CKV_AWS_23",
+        "bc_check_id": "BC_AWS_NETWORKING_2",
+        "check_name": "Ensure every security groups rule has a description",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/security-groups.tf",
+        "resource": "aws_security_group.app_sg",
+        "severity": "medium",
+        "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-networking-policies/bc-aws-23"
+      },
+      {
+        "check_id": "CKV_AWS_46",
+        "bc_check_id": "BC_AWS_GENERAL_27",
+        "check_name": "Ensure no hard-coded secrets exist in EC2 user data",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/ec2-instances.tf",
+        "resource": "aws_instance.app_server",
+        "severity": "medium",
+        "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/secrets-policies/bc-aws-46"
+      },
+      {
+        "check_id": "CKV_AWS_8",
+        "bc_check_id": "BC_AWS_GENERAL_8",
+        "check_name": "Ensure all data stored in the Launch configuration EBS is securely encrypted",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/launch-config.tf",
+        "resource": "aws_launch_configuration.app_lc",
+        "severity": "low",
+        "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/bc-aws-8"
+      }
+    ],
+    "skipped_checks": []
+  }
+}

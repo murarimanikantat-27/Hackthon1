@@ -1,0 +1,133 @@
+[
+  {
+    "check_type": "terraform",
+    "results": {
+      "passed_checks": [
+        {
+          "check_id": "CKV_AWS_274",
+          "bc_check_id": "BC_AWS_IAM_78",
+          "check_name": "Disallow IAM roles, users, and groups from using the AWS AdministratorAccess policy",
+          "check_result": {
+            "result": "PASSED"
+          },
+          "file_path": "/access-server.tf",
+          "resource": "aws_iam_role.access_server_role",
+          "severity": "low",
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-iam-policies/bc-aws-274"
+        },
+        {
+          "check_id": "CKV_AWS_88",
+          "bc_check_id": "BC_AWS_PUBLIC_12",
+          "check_name": "EC2 instance should not have public IP",
+          "check_result": {
+            "result": "PASSED"
+          },
+          "file_path": "/access-server.tf",
+          "resource": "aws_instance.access_server",
+          "severity": "medium",
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/public-policies/public-12"
+        }
+      ],
+      "failed_checks": [
+        {
+          "check_id": "CKV_AWS_79",
+          "bc_check_id": "BC_AWS_GENERAL_31",
+          "check_name": "Ensure Instance Metadata Service Version 1 is not enabled",
+          "check_result": {
+            "result": "FAILED"
+          },
+          "file_path": "/access-server.tf",
+          "resource": "aws_instance.access_server",
+          "severity": "high",
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-general-policies/bc-aws-general-31"
+        },
+        {
+          "check_id": "CKV_AWS_39",
+          "bc_check_id": "BC_AWS_KUBERNETES_2",
+          "check_name": "Ensure Amazon EKS public endpoint disabled",
+          "check_result": {
+            "result": "FAILED"
+          },
+          "file_path": "/eks-cluster.tf",
+          "resource": "aws_eks_cluster.eks",
+          "severity": "critical",
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-kubernetes-policies/bc-aws-kubernetes-2"
+        },
+        {
+          "check_id": "CKV_AWS_58",
+          "bc_check_id": "BC_AWS_KUBERNETES_3",
+          "check_name": "Ensure EKS Cluster has Secrets Encryption Enabled",
+          "check_result": {
+            "result": "FAILED"
+          },
+          "file_path": "/eks-cluster.tf",
+          "resource": "aws_eks_cluster.eks",
+          "severity": "critical",
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-kubernetes-policies/bc-aws-kubernetes-3"
+        },
+        {
+          "check_id": "CKV_AWS_88",
+          "bc_check_id": "BC_AWS_PUBLIC_12",
+          "check_name": "EC2 instance should not have public IP",
+          "check_result": {
+            "result": "FAILED"
+          },
+          "file_path": "/ec2-public.tf",
+          "resource": "aws_instance.public_server",
+          "severity": "high",
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/public-policies/public-12"
+        },
+        {
+          "check_id": "CKV_AWS_23",
+          "bc_check_id": "BC_AWS_NETWORKING_31",
+          "check_name": "Ensure every security group and rule has a description",
+          "check_result": {
+            "result": "FAILED"
+          },
+          "file_path": "/security-groups.tf",
+          "resource": "aws_security_group.public_sg",
+          "severity": "medium",
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-networking-policies/networking-31"
+        }
+      ],
+      "skipped_checks": []
+    },
+    "summary": {
+      "passed": 41,
+      "failed": 24,
+      "skipped": 0,
+      "parsing_errors": 0,
+      "resource_count": 21,
+      "checkov_version": "3.2.500"
+    }
+  },
+  {
+    "check_type": "secrets",
+    "results": {
+      "passed_checks": [],
+      "failed_checks": [
+        {
+          "check_id": "CKV_SECRET_6",
+          "bc_check_id": "BC_GIT_6",
+          "check_name": "Base64 High Entropy String",
+          "check_result": {
+            "result": "FAILED"
+          },
+          "file_path": "/secrets.tf",
+          "resource": "b2e98ad6f6eb8508dd6a14cfa704bad7f05f6fb1",
+          "severity": "critical",
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/secrets-policies/secrets-policy-index/git-secrets-6"
+        }
+      ],
+      "skipped_checks": []
+    },
+    "summary": {
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "parsing_errors": 0,
+      "resource_count": 1,
+      "checkov_version": "3.2.500"
+    }
+  }
+]

@@ -1,0 +1,46 @@
+<main class="flex-grow flex items-center py-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div class="max-w-4xl mx-auto flex flex-col items-center">
+            <div class="flex justify-center w-full">
+                <div class="upload-area group relative flex flex-col items-center justify-center p-16 bg-white dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2.5rem] shadow-xl shadow-slate-200/50 dark:shadow-none hover:border-primary dark:hover:border-primary transition-all duration-300 w-full max-w-2xl cursor-pointer">
+                    <div class="upload-icon transition-transform duration-300 mb-8 bg-primary/5 dark:bg-primary/10 p-8 rounded-full">
+                        <span class="material-symbols-outlined text-7xl text-primary">cloud_upload</span>
+                    </div>
+                    <h2 class="text-3xl font-extrabold text-navy-deep dark:text-white mb-3">Upload Manifests</h2>
+                    <p class="text-slate-500 dark:text-slate-400 mb-10 text-center text-lg max-w-md">
+                        Drag and drop your configuration files here to analyze deployment risks in real-time.
+                    </p>
+                    <label class="cursor-pointer group/btn">
+                        <span class="bg-navy-deep dark:bg-primary text-white px-10 py-4 rounded-xl font-bold hover:opacity-90 transition-all flex items-center gap-3 text-lg shadow-lg shadow-navy-deep/20 dark:shadow-primary/20">
+                            <span class="material-symbols-outlined">upload_file</span>
+                            Choose File
+                        </span>
+                        <input class="hidden" type="file"/>
+                    </label>
+                    <div class="mt-10 flex flex-col items-center gap-4">
+                        <p class="text-xs text-slate-400 uppercase tracking-[0.2em] font-semibold">Accepted Formats</p>
+                        <div class="flex gap-3">
+                            <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">YAML</span>
+                            <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">JSON</span>
+                            <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">TOML</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-12 flex items-center gap-8 opacity-50">
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary text-sm">verified_user</span>
+                    <span class="text-xs font-medium uppercase tracking-widest text-slate-500 dark:text-slate-400">Secure Transfer</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary text-sm">bolt</span>
+                    <span class="text-xs font-medium uppercase tracking-widest text-slate-500 dark:text-slate-400">Instant Analysis</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary text-sm">visibility_off</span>
+                    <span class="text-xs font-medium uppercase tracking-widest text-slate-500 dark:text-slate-400">Private &amp; Encrypted</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
