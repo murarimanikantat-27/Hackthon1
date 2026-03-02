@@ -319,13 +319,21 @@ def download_incident_pdf(incident_id: int, db: Session = Depends(get_db)):
     font_path = "C:\\Windows\\Fonts\\arial.ttf"
     font_bold_path = "C:\\Windows\\Fonts\\arialbd.ttf"
     
-    pdf.add_font("Arial", "", font_path)
-    pdf.add_font("Arial", "B", font_bold_path)
+    use_unicode = False
+    if os.path.exists(font_path) and os.path.exists(font_bold_path):
+        pdf.add_font("Arial", "", font_path)
+        pdf.add_font("Arial", "B", font_bold_path)
+        use_unicode = True
     
     # Helper to clean out any totally unprintable chars just in case
     def sanitize(text):
         if not text: return ""
-        return str(text)
+        s = str(text)
+        if not use_unicode:
+            # Replace common unicode chars before encoding to latin-1
+            s = s.replace('→', '->').replace('•', '-').replace('‘', "'").replace('’', "'").replace('“', '"').replace('”', '"')
+            s = s.encode('latin-1', 'replace').decode('latin-1')
+        return s
 
     # Title
     pdf.set_font("Arial", style="B", size=16)
