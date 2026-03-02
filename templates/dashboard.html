@@ -1219,7 +1219,9 @@
         function timeAgo(dateStr) {
             if (!dateStr) return '';
             const now = new Date();
-            const date = new Date(dateStr);
+            // Append 'Z' to force UTC parsing if it's missing (backend sometimes strips it)
+            const isUtcStr = dateStr.endsWith('Z') || dateStr.includes('+');
+            const date = new Date(isUtcStr ? dateStr : dateStr + 'Z');
             const seconds = Math.floor((now - date) / 1000);
 
             if (seconds < 60) return 'just now';
