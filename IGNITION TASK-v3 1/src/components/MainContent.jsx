@@ -11,11 +11,14 @@ const MainContent = ({ onFileUpload }) => {
     setSelectedFile(file);
     setUploadError(null);
     
-    if (file && file.name.endsWith('.tf')) {
+    const filename = file.name.toLowerCase();
+    const isValidFile = filename.endsWith('.tf') || filename.endsWith('.zip') || filename.endsWith('.tar.gz');
+    
+    if (file && isValidFile) {
       setIsUploading(true);
       
       try {
-        // Create FormData to upload the .tf file
+        // Create FormData to upload the file
         const formData = new FormData();
         formData.append('file', file);
         
@@ -42,7 +45,7 @@ const MainContent = ({ onFileUpload }) => {
         setIsUploading(false);
       }
     } else {
-      setUploadError('Please upload a .tf Terraform file.');
+      setUploadError('Please upload a .tf file, .zip, or .tar.gz archive containing Terraform scripts.');
     }
   };
 
@@ -99,7 +102,7 @@ const MainContent = ({ onFileUpload }) => {
               {isUploading ? (
                 <div className="flex flex-col items-center">
                   <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-primary mb-6"></div>
-                  <h2 className="text-2xl font-extrabold text-navy-deep dark:text-white mb-2">Analyzing Terraform File...</h2>
+                  <h2 className="text-2xl font-extrabold text-navy-deep dark:text-white mb-2">Analyzing Terraform Files...</h2>
                   <p className="text-slate-500 dark:text-slate-400 text-center">
                     Running security checks with Checkov
                   </p>
@@ -109,20 +112,20 @@ const MainContent = ({ onFileUpload }) => {
                   <div className="upload-icon transition-transform duration-300 mb-8 bg-primary/5 dark:bg-primary/10 p-8 rounded-full">
                     <span className="material-symbols-outlined text-7xl text-primary">cloud_upload</span>
                   </div>
-                  <h2 className="text-3xl font-extrabold text-navy-deep dark:text-white mb-3">Upload Terraform File</h2>
+                  <h2 className="text-3xl font-extrabold text-navy-deep dark:text-white mb-3">Upload Terraform Files</h2>
                   <p className="text-slate-500 dark:text-slate-400 mb-10 text-center text-lg max-w-md">
-                    Upload your .tf configuration file to analyze security vulnerabilities and deployment risks.
+                    Upload your .tf file, or a .zip/.tar.gz archive containing Terraform configurations to analyze security vulnerabilities.
                   </p>
                   <label className="cursor-pointer group/btn">
                     <span className="bg-navy-deep dark:bg-primary text-white px-10 py-4 rounded-xl font-bold hover:opacity-90 transition-all flex items-center gap-3 text-lg shadow-lg shadow-navy-deep/20 dark:shadow-primary/20">
                       <span className="material-symbols-outlined">upload_file</span>
-                      Choose Terraform File
+                      Choose File or Archive
                     </span>
                     <input 
                       className="hidden" 
                       type="file" 
                       onChange={handleFileChange}
-                      accept=".tf"
+                      accept=".tf,.zip,.tar.gz"
                       disabled={isUploading}
                     />
                   </label>
@@ -137,9 +140,11 @@ const MainContent = ({ onFileUpload }) => {
                     </div>
                   )}
                   <div className="mt-10 flex flex-col items-center gap-4">
-                    <p className="text-xs text-slate-400 uppercase tracking-[0.2em] font-semibold">Accepted Format</p>
+                    <p className="text-xs text-slate-400 uppercase tracking-[0.2em] font-semibold">Accepted Formats</p>
                     <div className="flex gap-3">
                       <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">.TF</span>
+                      <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">.ZIP</span>
+                      <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-md text-[10px] font-bold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">.TAR.GZ</span>
                     </div>
                   </div>
                 </>

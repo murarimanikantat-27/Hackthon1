@@ -57,30 +57,56 @@ def health_check():
 @app.post("/api/v1/terraform/checkov")
 async def run_checkov(file: UploadFile = File(...)):
     """
-    Upload a .tf Terraform file and run Checkov security analysis.
+    Upload a .tf Terraform file, .zip, or .tar.gz archive and run Checkov security analysis.
     Returns JSON report with security findings.
     """
-    if not file.filename.endswith(".tf"):
-        raise HTTPException(status_code=400, detail="File must be a .tf Terraform script.")
+    filename = file.filename.lower()
+    if not (filename.endswith(".tf") or filename.endswith(".zip") or filename.endswith(".tar.gz")):
+        raise HTTPException(
+            status_code=400, 
+            detail="File must be a .tf Terraform script, a .zip file, or a .tar.gz archive containing terraform scripts."
+        )
     
     content = await file.read()
     
-    # Create a temporary directory to store the terraform script
+    # Create a temporary directory to store the terraform files
     with tempfile.TemporaryDirectory() as tmp_dir:
-        # Use the original filename
         original_filename = os.path.basename(file.filename)
         tmp_file_path = os.path.join(tmp_dir, original_filename)
         
         with open(tmp_file_path, "wb") as f:
             f.write(content)
         
+        # Determine checkov arguments
+        checkov_args = [
+            sys.executable, "-c", 
+            "import sys; from checkov.main import Checkov; sys.exit(Checkov().run())",
+            "--output", "json"
+        ]
+        
+        # If it's an archive, extract it and scan the directory (-d)
+        if filename.endswith(".zip"):
+            import zipfile
+            extract_dir = os.path.join(tmp_dir, "extracted")
+            os.makedirs(extract_dir, exist_ok=True)
+            with zipfile.ZipFile(tmp_file_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+            checkov_args.extend(["-d", extract_dir])
+        elif filename.endswith(".tar.gz"):
+            import tarfile
+            extract_dir = os.path.join(tmp_dir, "extracted")
+            os.makedirs(extract_dir, exist_ok=True)
+            with tarfile.open(tmp_file_path, 'r:gz') as tar_ref:
+                tar_ref.extractall(extract_dir)
+            checkov_args.extend(["-d", extract_dir])
+        else:
+            # It's a single .tf file
+            checkov_args.extend(["-f", tmp_file_path])
+        
         try:
-            # Run checkov on the temporary file
+            # Run checkov on the file or directory
             result = subprocess.run(
-                [sys.executable, "-c", 
-                 "import sys; from checkov.main import Checkov; sys.exit(Checkov().run())",
-                 "-f", tmp_file_path, 
-                 "--output", "json"],
+                checkov_args,
                 capture_output=True,
                 text=True
             )
