@@ -1,5 +1,6 @@
 import React from 'react';
 import logo from '../images/Shellkode-logo-hi-res.svg';
+import './HomePage.css';
 
 const HomePage = ({ onContinue }) => {
   return (
@@ -95,112 +96,6 @@ const HomePage = ({ onContinue }) => {
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-20px); }
-        }
-        
-        @keyframes float-delayed {
-          0%, 100% { transform: translateY(0px) translateX(0px); }
-          50% { transform: translateY(-30px) translateX(20px); }
-        }
-        
-        @keyframes float-slow {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-15px); }
-        }
-        
-        @keyframes gradient {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-        }
-        
-        .animate-float {
-          animation: float 6s ease-in-out infinite;
-        }
-        
-        .animate-float-delayed {
-          animation: float-delayed 8s ease-in-out infinite;
-        }
-        
-        .animate-float-slow {
-          animation: float-slow 10s ease-in-out infinite;
-        }
-        
-        .animate-gradient {
-          background-size: 200% 200%;
-          animation: gradient 3s ease infinite;
-        }
-        
-        .animate-fade-in-down {
-          animation: fadeInDown 0.8s ease-out;
-        }
-        
-        .animate-fade-in-up {
-          animation: fadeInUp 0.8s ease-out;
-        }
-        
-        .animate-fade-in {
-          animation: fadeIn 1s ease-out;
-        }
-        
-        .animation-delay-200 {
-          animation-delay: 0.2s;
-          opacity: 0;
-          animation-fill-mode: forwards;
-        }
-        
-        .animation-delay-400 {
-          animation-delay: 0.4s;
-          opacity: 0;
-          animation-fill-mode: forwards;
-        }
-        
-        .animation-delay-600 {
-          animation-delay: 0.6s;
-          opacity: 0;
-          animation-fill-mode: forwards;
-        }
-        
-        .animation-delay-800 {
-          animation-delay: 0.8s;
-          opacity: 0;
-          animation-fill-mode: forwards;
-        }
-        
-        @keyframes fadeInDown {
-          from {
-            opacity: 0;
-            transform: translateY(-30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 };
