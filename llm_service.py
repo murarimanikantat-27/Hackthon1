@@ -98,12 +98,12 @@ class LLMService:
     """Service for generating RCA using AWS Bedrock Claude Sonnet 4.5."""
 
     def __init__(self):
-        self.client = boto3.client(
-            "bedrock-runtime",
-            region_name=settings.aws_region,
-            aws_access_key_id=settings.aws_access_key_id or None,
-            aws_secret_access_key=settings.aws_secret_access_key or None,
-        )
+        kwargs = {"region_name": settings.aws_region}
+        if settings.aws_access_key_id and settings.aws_secret_access_key:
+            kwargs["aws_access_key_id"] = settings.aws_access_key_id
+            kwargs["aws_secret_access_key"] = settings.aws_secret_access_key
+
+        self.client = boto3.client("bedrock-runtime", **kwargs)
         self.model_id = settings.bedrock_model_id
         logger.info(f"LLM Service initialized with model: {self.model_id}")
 

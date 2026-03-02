@@ -510,6 +510,13 @@ class EmailAlertMonitor:
                     break
                 except asyncio.TimeoutError:
                     pass # Loop around and poll again
+                except imaplib.IMAP4.abort as e:
+                    logger.warning(f"IMAP connection dropped (EOF). Reconnecting...")
+                    await asyncio.sleep(2)
+                    try:
+                        self.connect()
+                    except Exception as reconnect_err:
+                        logger.error(f"Reconnect failed: {reconnect_err}")
                 except Exception as e:
                     logger.error(f"Email monitor error: {e}", exc_info=True)
                     # Reconnect on error
