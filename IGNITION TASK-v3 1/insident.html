@@ -1,5 +1,5 @@
-
-​<!DOCTYPE html>
+​
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -1118,7 +1118,9 @@
         function timeAgo(dateStr) {
             if (!dateStr) return '';
             const now = new Date();
-            const date = new Date(dateStr);
+            // Backend returns naive datetime which is actually UTC
+            const utcDateStr = dateStr.endsWith('Z') ? dateStr : dateStr + 'Z';
+            const date = new Date(utcDateStr);
             const seconds = Math.floor((now - date) / 1000);
 
             if (seconds < 60) return 'just now';
