@@ -7,3 +7,5 @@ __pycache__/
 k8s_incident_hub.db
 frontend/
 run_frontend.py
+
+node_modules/
