@@ -1,0 +1,9 @@
+venv/
+env/
+__pycache__/
+*.pyc
+.env
+.git/
+k8s_incident_hub.db
+frontend/
+run_frontend.py
