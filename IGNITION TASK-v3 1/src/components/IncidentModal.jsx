@@ -10,6 +10,8 @@ const IncidentModal = ({ isOpen, onClose, isDark, onThemeToggle }) => {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionResult, setExecutionResult] = useState(null);
 
   const [stats, setStats] = useState({
     total: 0,
@@ -112,13 +114,9 @@ const IncidentModal = ({ isOpen, onClose, isDark, onThemeToggle }) => {
   };
 
   const handleApproveRemediation = async (incident) => {
-    // Confirm before executing
-    const confirmMessage = `Are you sure you want to approve and execute remediation for incident #${incident.id}?\n\nThis will execute the following actions:\n${incident.actions?.map(a => `- ${a.action_type}: ${a.command || 'N/A'}`).join('\n')}`;
+    setIsExecuting(true);
+    setExecutionResult(null);
     
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
-
     try {
       const response = await fetch(`${API_BASE_URL}/api/incidents/${incident.id}/remediate`, {
         method: 'POST',
@@ -132,7 +130,14 @@ const IncidentModal = ({ isOpen, onClose, isDark, onThemeToggle }) => {
       }
       
       const data = await response.json();
-      alert(`Remediation approved and initiated successfully!\n\nStatus: ${data.status}`);
+      
+      // Set execution result to show in modal
+      setExecutionResult({
+        success: true,
+        status: data.status,
+        command: data.action?.command || 'N/A',
+        output: data.action?.output || 'No output available'
+      });
       
       // Refresh incident data
       const updatedResponse = await fetch(`${API_BASE_URL}/api/incidents/${incident.id}`);
@@ -154,8 +159,17 @@ const IncidentModal = ({ isOpen, onClose, isDark, onThemeToggle }) => {
       }
     } catch (err) {
       console.error('Error executing remediation:', err);
-      alert('Failed to execute remediation: ' + err.message);
+      setExecutionResult({
+        success: false,
+        error: err.message
+      });
+    } finally {
+      setIsExecuting(false);
     }
+  };
+
+  const closeExecutionModal = () => {
+    setExecutionResult(null);
   };
 
   if (!isOpen) return null;
@@ -170,6 +184,82 @@ const IncidentModal = ({ isOpen, onClose, isDark, onThemeToggle }) => {
         onVulnerabilitiesClick={onClose}
         activeItem="incidents"
       />
+      
+      {/* Execution Result Modal */}
+      {executionResult && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-slate-200 dark:border-slate-800">
+            <div className={`px-8 py-6 border-b border-slate-200 dark:border-slate-800 ${
+              executionResult.success ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'
+            }`}>
+              <div className="flex items-center gap-4">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                  executionResult.success ? 'bg-green-500' : 'bg-red-500'
+                }`}>
+                  <span className="material-symbols-outlined text-white text-4xl">
+                    {executionResult.success ? 'check_circle' : 'error'}
+                  </span>
+                </div>
+                <div>
+                  <h2 className={`text-2xl font-bold ${
+                    executionResult.success ? 'text-green-800 dark:text-green-400' : 'text-red-800 dark:text-red-400'
+                  }`}>
+                    {executionResult.success ? 'Remediation Executed Successfully!' : 'Remediation Failed'}
+                  </h2>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    {executionResult.success ? 'The remediation command has been executed' : 'An error occurred during execution'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-8 py-6 space-y-6">
+              {executionResult.success ? (
+                <>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-2">Status</div>
+                    <div className="px-4 py-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                      <span className="text-green-800 dark:text-green-400 font-semibold">{executionResult.status}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-2">Command Executed</div>
+                    <div className="font-mono text-sm px-4 py-3 bg-slate-900 dark:bg-black rounded-lg text-cyan-400 overflow-x-auto">
+                      {executionResult.command}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-2">Output</div>
+                    <div className="px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-lg max-h-60 overflow-y-auto">
+                      <pre className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-mono">
+                        {executionResult.output}
+                      </pre>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-2">Error Details</div>
+                  <div className="px-4 py-3 bg-red-50 dark:bg-red-900/20 rounded-lg border-l-4 border-red-500">
+                    <p className="text-sm text-red-800 dark:text-red-400">{executionResult.error}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-8 py-6 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+              <button
+                onClick={closeExecutionModal}
+                className="px-8 py-3 bg-primary hover:bg-primary/90 text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       <div className="flex-1 bg-background-light dark:bg-background-dark overflow-y-auto overflow-x-auto py-8">
         <div className="w-full pl-4 sm:pl-6 lg:pl-8 pr-2 sm:pr-3 lg:pr-4 ml-64 mb-8">
@@ -340,46 +430,129 @@ const IncidentModal = ({ isOpen, onClose, isDark, onThemeToggle }) => {
                     </div>
 
                     {selectedIncident.rca && (
-                      <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">🧠 Root Cause Analysis</div>
-                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                            Confidence: {(selectedIncident.rca.confidence_score * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-4">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              selectedIncident.rca.confidence_score >= 0.7 ? 'bg-green-500' :
-                              selectedIncident.rca.confidence_score >= 0.4 ? 'bg-yellow-500' :
-                              'bg-red-500'
-                            }`}
-                            style={{ width: `${selectedIncident.rca.confidence_score * 100}%` }}
-                          ></div>
-                        </div>
-                        <div className="text-sm font-semibold text-navy-deep dark:text-white px-4 py-3 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-r-lg mb-3">
-                          {selectedIncident.rca.root_cause}
-                        </div>
-                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{selectedIncident.rca.analysis}</p>
+                      <>
+                        {/* Executive Summary */}
+                        {selectedIncident.rca.executive_summary && (
+                          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">📊 1. Executive Summary</div>
+                            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{selectedIncident.rca.executive_summary}</p>
+                          </div>
+                        )}
 
-                        {selectedIncident.rca.recommendations && selectedIncident.rca.recommendations.length > 0 && (
-                          <div className="mt-4">
-                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">💡 Recommendations</div>
+                        {/* Incident Detection */}
+                        {selectedIncident.rca.incident_detection && (
+                          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">🔍 2. Incident Detection</div>
+                            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{selectedIncident.rca.incident_detection}</p>
+                          </div>
+                        )}
+
+                        {/* Incident Timeline */}
+                        {selectedIncident.rca.incident_timeline && selectedIncident.rca.incident_timeline.length > 0 && (
+                          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">⏱️ 3. Incident Timeline (UTC)</div>
                             <ul className="space-y-2">
-                              {selectedIncident.rca.recommendations.map((rec, i) => (
-                                <li key={i} className="flex items-start gap-2.5 px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 rounded-lg text-sm text-slate-700 dark:text-slate-300">
-                                  <span className="text-primary font-bold flex-shrink-0">→</span>
-                                  {rec}
+                              {selectedIncident.rca.incident_timeline.map((item, i) => (
+                                <li key={i} className="flex items-start gap-2.5 text-sm text-slate-600 dark:text-slate-400">
+                                  <span className="text-primary font-bold flex-shrink-0">•</span>
+                                  {item}
                                 </li>
                               ))}
                             </ul>
                           </div>
                         )}
-                      </div>
+
+                        {/* Root Cause Analysis */}
+                        <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">🧠 4. Root Cause Analysis</div>
+                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                              Confidence: {(selectedIncident.rca.confidence_score * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-4">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                selectedIncident.rca.confidence_score >= 0.7 ? 'bg-green-500' :
+                                selectedIncident.rca.confidence_score >= 0.4 ? 'bg-yellow-500' :
+                                'bg-red-500'
+                              }`}
+                              style={{ width: `${selectedIncident.rca.confidence_score * 100}%` }}
+                            ></div>
+                          </div>
+                          <div className="text-sm font-semibold text-navy-deep dark:text-white px-4 py-3 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-r-lg mb-3">
+                            {selectedIncident.rca.root_cause}
+                          </div>
+                          <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">{selectedIncident.rca.analysis}</p>
+                        </div>
+
+                        {/* Impact Assessment */}
+                        {selectedIncident.rca.impact_assessment && (
+                          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">💥 5. Impact Assessment</div>
+                            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400 whitespace-pre-line">{selectedIncident.rca.impact_assessment}</p>
+                          </div>
+                        )}
+
+                        {/* Resolution Actions */}
+                        {selectedIncident.rca.resolution_actions && (
+                          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">⚡ 6. Resolution Actions</div>
+                            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400 whitespace-pre-line">{selectedIncident.rca.resolution_actions}</p>
+                          </div>
+                        )}
+
+                        {/* AI-Suggested Remediation Command */}
+                        {selectedIncident.rca.remediation_command && (
+                          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">🤖 AI-Suggested Remediation Command</div>
+                            <div className="mb-3">
+                              <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold uppercase ${
+                                selectedIncident.rca.remediation_risk === 'low' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400' :
+                                selectedIncident.rca.remediation_risk === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400' :
+                                'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
+                              }`}>Risk: {selectedIncident.rca.remediation_risk}</span>
+                            </div>
+                            <div className="font-mono text-sm px-4 py-3 bg-slate-900 dark:bg-black rounded-lg text-cyan-400 overflow-x-auto mb-3">
+                              $ kubectl {selectedIncident.rca.remediation_command}
+                            </div>
+                            {selectedIncident.rca.remediation_explanation && (
+                              <div className="text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+                                <span className="font-semibold text-navy-deep dark:text-white">💡 Why: </span>
+                                {selectedIncident.rca.remediation_explanation}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Preventive Measures */}
+                        {selectedIncident.rca.preventive_measures && (
+                          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">🛡️ 7. Preventive Measures</div>
+                            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400 whitespace-pre-line">{selectedIncident.rca.preventive_measures}</p>
+                          </div>
+                        )}
+
+                        {/* Lessons Learned */}
+                        {selectedIncident.rca.lessons_learned && (
+                          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">🎓 8. Lessons Learned</div>
+                            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400 whitespace-pre-line">{selectedIncident.rca.lessons_learned}</p>
+                          </div>
+                        )}
+
+                        {/* Final Summary */}
+                        {selectedIncident.rca.final_summary && (
+                          <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
+                            <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">📝 9. Final Summary</div>
+                            <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-400 whitespace-pre-line">{selectedIncident.rca.final_summary}</p>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800">
-                      <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">🔧 Remediation Actions</div>
+                      <div className="text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400 mb-3">🔧 Remediation History</div>
                       {selectedIncident.actions && selectedIncident.actions.length > 0 ? (
                         selectedIncident.actions.map((action, i) => (
                           <div key={i} className="px-4 py-3 mb-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -409,17 +582,31 @@ const IncidentModal = ({ isOpen, onClose, isDark, onThemeToggle }) => {
                     <div className="px-6 py-5 flex gap-3">
                       <button
                         onClick={() => handleDownloadPDF(selectedIncident)}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-semibold transition-all"
+                        disabled={isExecuting}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <span className="material-symbols-outlined text-lg">download</span>
                         Download PDF
                       </button>
                       <button
                         onClick={() => handleApproveRemediation(selectedIncident)}
-                        className="flex-[2] flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl"
+                        disabled={isExecuting}
+                        className="flex-[2] flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-70 disabled:cursor-not-allowed relative overflow-hidden"
                       >
-                        <span className="material-symbols-outlined text-lg">check_circle</span>
-                        Approve & Execute Remediation
+                        {isExecuting ? (
+                          <>
+                            <div className="absolute inset-0 bg-gradient-to-r from-green-600 via-green-500 to-green-600 animate-pulse"></div>
+                            <div className="relative flex items-center gap-2">
+                              <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                              <span>Executing Remediation...</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-lg">check_circle</span>
+                            Approve & Execute Remediation
+                          </>
+                        )}
                       </button>
                     </div>
                   </>
