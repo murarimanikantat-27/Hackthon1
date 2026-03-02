@@ -1,16 +1,20 @@
-FROM node:18-alpine
+# ---------- Build stage ----------
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
-# Install dependencies
 COPY package.json package-lock.json ./
 RUN npm install
 
-# Copy application source code
 COPY . .
+RUN npm run build
 
-# Expose port 3000 for the React development server
-EXPOSE 3000
 
-# Start the application exactly like local development
-CMD ["npm", "start"]
+
+FROM nginx:alpine
+
+COPY --from=build /app/build /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
