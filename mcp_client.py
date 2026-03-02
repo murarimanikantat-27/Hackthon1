@@ -197,7 +197,33 @@ class K8sMCPClient:
     async def execute_remediation_command(self, command: str) -> str:
         """Execute a remediation kubectl command."""
         logger.info(f"⚡ Executing remediation: {command}")
-        return await self.run_kubectl(command)
+        
+        try:
+            exec_cmd = command[8:] if command.startswith("kubectl ") else command
+            tool_output = await self.run_kubectl(exec_cmd)
+            if "Unknown tool" in tool_output or "unrecognized tool" in tool_output.lower():
+                raise ValueError("Unknown tool")
+            return tool_output
+        except Exception as e:
+            error_str = str(e)
+            if "Unknown tool" in error_str or isinstance(e, ValueError):
+                import subprocess
+                import os
+                logger.info(f"  MCP tool 'run_kubectl' missing. Falling back to subprocess for: {command}")
+                safe_cmd = command if command.startswith("kubectl") else f"kubectl {command}"
+                process = subprocess.run(
+                    safe_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    shell=True,
+                    env=os.environ.copy()
+                )
+                if process.returncode == 0:
+                    return process.stdout
+                else:
+                    raise Exception(f"Subprocess failed: {process.stderr}")
+            raise e
 
     async def test_connection(self):
         """Test connectivity to the MCP server."""

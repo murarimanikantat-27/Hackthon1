@@ -10,34 +10,34 @@ const MainContent = ({ onFileUpload }) => {
     const file = e.target.files[0];
     setSelectedFile(file);
     setUploadError(null);
-    
+
     const filename = file.name.toLowerCase();
     const isValidFile = filename.endsWith('.tf') || filename.endsWith('.zip') || filename.endsWith('.tar.gz');
-    
+
     if (file && isValidFile) {
       setIsUploading(true);
-      
+
       try {
         // Create FormData to upload the file
         const formData = new FormData();
         formData.append('file', file);
-        
+
         // Call the Checkov API
         const response = await fetch(`${API_BASE_URL}/api/v1/terraform/checkov`, {
           method: 'POST',
           body: formData
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.detail || 'Failed to analyze Terraform file');
         }
-        
+
         const checkovResult = await response.json();
-        
+
         // Transform Checkov result to dashboard format
         const transformedData = transformCheckovResult(checkovResult, file.name);
-        
+
         onFileUpload(transformedData);
       } catch (error) {
         console.error('Error uploading file:', error);
@@ -55,7 +55,7 @@ const MainContent = ({ onFileUpload }) => {
     const allPassedChecks = [];
     let totalPassed = 0;
     let totalFailed = 0;
-    
+
     // Checkov returns an array of results
     if (Array.isArray(checkovData)) {
       checkovData.forEach(item => {
@@ -77,7 +77,7 @@ const MainContent = ({ onFileUpload }) => {
         totalFailed = checkovData.summary.failed || 0;
       }
     }
-    
+
     return {
       check_type: 'terraform',
       scanDate: new Date().toLocaleDateString(),
@@ -104,7 +104,7 @@ const MainContent = ({ onFileUpload }) => {
                   <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-primary mb-6"></div>
                   <h2 className="text-2xl font-extrabold text-navy-deep dark:text-white mb-2">Analyzing Terraform Files...</h2>
                   <p className="text-slate-500 dark:text-slate-400 text-center">
-                    Running security checks with Checkov
+                    Running security checks
                   </p>
                 </div>
               ) : (
@@ -121,9 +121,9 @@ const MainContent = ({ onFileUpload }) => {
                       <span className="material-symbols-outlined">upload_file</span>
                       Choose File or Archive
                     </span>
-                    <input 
-                      className="hidden" 
-                      type="file" 
+                    <input
+                      className="hidden"
+                      type="file"
                       onChange={handleFileChange}
                       accept=".tf,.zip,.tar.gz"
                       disabled={isUploading}

@@ -401,9 +401,8 @@ class EmailAlertMonitor:
                 body = _get_email_body(msg)
 
                 results.append((msg_id.decode(), subject, body))
-
-                # Mark as read
-                self._mail.store(msg_id, "+FLAGS", "\\Seen")
+                # We no longer mark as read here.
+                # It is now done in process_alerts() after successful DB insertion.
 
             except Exception as e:
                 logger.error(f"Error processing email {msg_id}: {e}")
@@ -440,17 +439,16 @@ class EmailAlertMonitor:
                         inc.status = IncidentStatus.RESOLVED
                         inc.resolved_at = datetime.now(timezone.utc)
                     db.commit()
+                    
+                    # Mark resolved email as read
+                    if self._mail:
+                        self._mail.store(msg_id.encode(), "+FLAGS", "\\Seen")
                     continue
 
                 # Check for duplicate
-                existing = db.query(Incident).filter(
-                    Incident.title == details.get("title", subject),
-                    Incident.source == "email",
-                    Incident.status.notin_([IncidentStatus.RESOLVED, IncidentStatus.FAILED]),
-                ).first()
-                if existing:
-                    logger.info(f"⏭️ Skipping duplicate alert email: {subject}")
-                    continue
+                # We used to skip duplicates here, but user requested to allow all alerts through
+                # to create distinct incidents regardless of whether the same physical alert
+                # already triggered an active incident recently.
 
                 # Create incident
                 severity = _map_severity(details["severity"])
@@ -477,6 +475,10 @@ class EmailAlertMonitor:
 
                 logger.info(f"🆕 Incident #{incident.id} created from email: {subject}")
                 created_ids.append(incident.id)
+                
+                # Finally, successfully parsed and saved into the database, so mark as read in inbox
+                if self._mail:
+                    self._mail.store(msg_id.encode(), "+FLAGS", "\\Seen")
 
             db.commit()
         finally:

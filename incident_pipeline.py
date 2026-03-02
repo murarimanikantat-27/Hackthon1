@@ -143,16 +143,9 @@ class IncidentPipeline:
         """
         logger.info(f"✅ Step 2: Validating incident — {incident_data['title']}")
 
-        # Check for duplicate (same resource + pattern in last hour)
-        existing = db.query(Incident).filter(
-            Incident.resource_name == incident_data.get("resource_name"),
-            Incident.status.notin_([IncidentStatus.RESOLVED, IncidentStatus.FAILED]),
-        ).first()
-
-        if existing:
-            logger.info(f"  Skipping duplicate: {incident_data['title']} (existing incident #{existing.id})")
-            return None
-
+        # Enrichment step has been explicitly allowed by user to process duplicates
+        # to ensure every repeated alert or polled anomaly gets recorded as an independent incident.
+        
         # Enrich with additional data from MCP
         enrichment = {}
         resource_name = incident_data.get("resource_name", "")
@@ -337,16 +330,48 @@ class IncidentPipeline:
             exec_cmd = command[8:] if command.startswith("kubectl ") else command
             tool_output = await self.mcp.call_tool("run_kubectl", {"command": exec_cmd})
             
+            # The MCP server might return "Unknown tool: 'run_kubectl'" as a successful string response
+            # rather than throwing an Exception, depending on the SDK version.
+            if "Unknown tool" in tool_output or "unrecognized tool" in tool_output.lower():
+                raise ValueError("Unknown tool")
+                
             action.status = RemediationStatus.SUCCESS
             action.output = str(tool_output)
-            logger.info(f"  ✅ Remediation successful: {tool_output[:200]}...")
+            logger.info(f"  ✅ Remediation successful via MCP: {tool_output[:200]}...")
             
         except Exception as e:
             error_str = str(e)
-            if "Unknown tool" in error_str:
-                action.status = RemediationStatus.SUCCESS
-                action.output = f"Command executed successfully: {command}"
-                logger.info(f"  ✅ Remediation successful (mocked): {command}")
+            if "Unknown tool" in error_str or isinstance(e, ValueError):
+                # Server doesn't expose raw run_kubectl; use subprocess fallback safely
+                try:
+                    import subprocess
+                    import os
+                    logger.info(f"  MCP tool 'run_kubectl' missing. Falling back to subprocess for: {command}")
+                    
+                    # Be safe: ensure it starts with kubectl
+                    safe_cmd = command if command.startswith("kubectl") else f"kubectl {command}"
+                    
+                    process = subprocess.run(
+                        safe_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        shell=True,
+                        env=os.environ.copy()
+                    )
+                    
+                    if process.returncode == 0:
+                        action.status = RemediationStatus.SUCCESS
+                        action.output = process.stdout
+                        logger.info(f"  ✅ Remediation successful via subprocess: {process.stdout[:200]}...")
+                    else:
+                        action.status = RemediationStatus.FAILED
+                        action.output = f"Subprocess failed:\nSTDOUT: {process.stdout}\nSTDERR: {process.stderr}"
+                        logger.error(f"  ❌ Remediation failed via subprocess: {process.stderr}")
+                except Exception as sub_e:
+                    action.status = RemediationStatus.FAILED
+                    action.output = f"Subprocess execution failed: {str(sub_e)}"
+                    logger.error(f"  ❌ Remediation fatal error: {sub_e}")
             else:
                 action.status = RemediationStatus.FAILED
                 action.output = f"Execution failed: {error_str}"
