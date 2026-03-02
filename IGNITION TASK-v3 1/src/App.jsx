@@ -3,10 +3,12 @@ import Header from './components/Header';
 import MainContent from './components/MainContent';
 import Footer from './components/Footer';
 import Dashboard from './components/Dashboard';
+import LoadingAnimation from './components/LoadingAnimation';
 
 function App() {
   const [isDark, setIsDark] = useState(false);
   const [dashboardData, setDashboardData] = useState(null);
+  const [showLoading, setShowLoading] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -30,19 +32,32 @@ function App() {
   };
 
   const handleFileUpload = (data) => {
+    setShowLoading(true);
     setDashboardData(data);
+  };
+
+  const handleLoadingComplete = () => {
+    setShowLoading(false);
   };
 
   const handleBackToUpload = () => {
     setDashboardData(null);
+    setShowLoading(false);
   };
 
-  if (dashboardData) {
+  // Show loading animation
+  if (showLoading) {
+    return <LoadingAnimation onComplete={handleLoadingComplete} />;
+  }
+
+  // Show dashboard after loading
+  if (dashboardData && !showLoading) {
     return (
       <Dashboard data={dashboardData} onBack={handleBackToUpload} isDark={isDark} onThemeToggle={toggleTheme} />
     );
   }
 
+  // Show upload page
   return (
     <div className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen flex flex-col overflow-x-hidden pt-16">
       <Header onThemeToggle={toggleTheme} isDark={isDark} />
