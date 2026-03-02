@@ -41,6 +41,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─── Health Check ───
+@app.get("/health")
+@app.get("/api/health")
+def health_check():
+    """Health check endpoint for ECS load balancer."""
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
 # ─── Pydantic Response Models ───
 
 class IncidentSummary(BaseModel):
