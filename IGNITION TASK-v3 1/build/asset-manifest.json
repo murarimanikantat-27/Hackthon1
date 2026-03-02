@@ -1,0 +1,14 @@
+{
+  "files": {
+    "main.css": "/static/css/main.b8fc7baf.css",
+    "main.js": "/static/js/main.36d46659.js",
+    "static/media/Shellkode-logo-hi-res.svg": "/static/media/Shellkode-logo-hi-res.4d0959385af8a135cc3e8bd6648882ea.svg",
+    "index.html": "/index.html",
+    "main.b8fc7baf.css.map": "/static/css/main.b8fc7baf.css.map",
+    "main.36d46659.js.map": "/static/js/main.36d46659.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.b8fc7baf.css",
+    "static/js/main.36d46659.js"
+  ]
+}
