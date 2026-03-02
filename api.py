@@ -4,12 +4,16 @@ FastAPI application — REST API + web dashboard for incident management.
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fpdf import FPDF
@@ -47,6 +51,52 @@ app.add_middleware(
 def health_check():
     """Health check endpoint for ECS load balancer."""
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+# ─── Checkov Terraform Analysis ───
+@app.post("/api/v1/terraform/checkov")
+async def run_checkov(file: UploadFile = File(...)):
+    """
+    Upload a .tf Terraform file and run Checkov security analysis.
+    Returns JSON report with security findings.
+    """
+    if not file.filename.endswith(".tf"):
+        raise HTTPException(status_code=400, detail="File must be a .tf Terraform script.")
+    
+    content = await file.read()
+    
+    # Create a temporary directory to store the terraform script
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Use the original filename
+        original_filename = os.path.basename(file.filename)
+        tmp_file_path = os.path.join(tmp_dir, original_filename)
+        
+        with open(tmp_file_path, "wb") as f:
+            f.write(content)
+        
+        try:
+            # Run checkov on the temporary file
+            result = subprocess.run(
+                [sys.executable, "-c", 
+                 "import sys; from checkov.main import Checkov; sys.exit(Checkov().run())",
+                 "-f", tmp_file_path, 
+                 "--output", "json"],
+                capture_output=True,
+                text=True
+            )
+            
+            try:
+                # Checkov returns JSON to stdout even when violations are found
+                parsed_json = json.loads(result.stdout)
+                return JSONResponse(content=parsed_json)
+            except json.JSONDecodeError:
+                # If stdout is empty or not valid JSON
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Failed to parse Checkov output. stderr: {result.stderr}"
+                )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 # ─── Pydantic Response Models ───
 
