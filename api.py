@@ -11,7 +11,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 from fpdf import FPDF
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -32,11 +32,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Templates
-TEMPLATES_DIR = Path(__file__).parent / "templates"
-TEMPLATES_DIR.mkdir(exist_ok=True)
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
+# Allow CORS for the separate frontend (e.g., running on port 8080 or wherever)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ─── Pydantic Response Models ───
 
@@ -744,8 +747,5 @@ async def alertmanager_webhook(payload: AlertManagerPayload):
 
 
 # ─── Dashboard Page ───
-
-@app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    """Serve the web dashboard."""
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+# Removed HTML response so backend is purely an API.
+# The frontend should now be served separately.
