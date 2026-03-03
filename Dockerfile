@@ -21,6 +21,13 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
     && chmod +x kubectl \
     && mv kubectl /usr/local/bin/
 
+# Install AWS CLI v2
+RUN apt-get update && apt-get install -y unzip && \
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
+    unzip awscliv2.zip && \
+    ./aws/install && \
+    rm -rf awscliv2.zip ./aws
+
 # Install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
@@ -29,8 +36,14 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copy the rest of the backend codebase into the container
 COPY . /app
 
+# Ensure entrypoint has execution permissions
+RUN chmod +x /app/entrypoint.sh
+
 # Expose the API port
 EXPOSE 8000
 
-# Explicitly default to python main.py
-CMD ["python", "main.py"]
+# Set entrypoint to run kubeconfig setup before starting python
+ENTRYPOINT ["/app/entrypoint.sh"]
+
+# Default to python main.py
+CMD ["--mode", "email"]
